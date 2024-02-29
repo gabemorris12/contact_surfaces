@@ -69,16 +69,17 @@ class TestContact(unittest.TestCase):
 
     # Define velocity for points
     _vels = np.array([
-        [1.2, 0.8, -0.5],
-        [0.7, 0.75, -0.25],
-        [-0.6, -0.3, -3.4],
-        [-0.65, -0.35, -4.2]
+        [0.12, 0.08, -0.05],
+        [0.7*3, 0.75*3, -0.25*3],
+        [-0.06, -0.03, -0.34],
+        [-0.065, -0.035, -0.42]
     ])
 
     _nodes = [Node(i, pos, vel) for i, (pos, vel) in enumerate(list(zip(_points, _vels)))]
-    random_surf = Surface(0, list(reversed(_nodes)))
+    random_surf = Surface(0, _nodes)
+    random_surf.reverse_dir()
     _sep_point = np.array([0.75, 0.75, 1])
-    _v = np.array([0.1, -0.1, 8])
+    _v = np.array([2, -0.1, 10.5])
     sep_node = Node(len(_nodes), _sep_point, _v)
 
     def test_reverse_dir(self):
@@ -144,7 +145,7 @@ class TestContact(unittest.TestCase):
         # Testing random velocities
         sol_rand = TestContact.random_surf.contact_check(TestContact.sep_node, 0.1)
         self.assertTrue(sol_rand[0], True)
-        self.assertEqual(sol_rand[1], 0.09273273146222077)
+        self.assertEqual(sol_rand[1], 0.08544489159847724)
 
 
 if __name__ == '__main__':
