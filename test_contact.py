@@ -3,21 +3,83 @@ import unittest
 import meshio
 import numpy as np
 
-from contact import MeshBody, GlobalMesh
+from contact import MeshBody, GlobalMesh, Node, Surface
 
 
 class TestContact(unittest.TestCase):
-    mesh1, mesh2, global_mesh = None, None, None
-    test_surf = None
+    data1 = meshio.read('Meshes/Block.msh')
+    data2 = meshio.read('Meshes/Block2.msh')
+    mesh1 = MeshBody(data1.points, data1.cells_dict, velocity=np.float64([0, 500, 0]))
+    mesh2 = MeshBody(data2.points, data2.cells_dict)
+    global_mesh = GlobalMesh(mesh1, mesh2, bs=0.5)
+    test_surf = global_mesh.surfaces[27]
+    dt1 = 1.1e-6
 
-    @classmethod
-    def setUpClass(cls):
-        data1 = meshio.read('Meshes/Block.msh')
-        data2 = meshio.read('Meshes/Block2.msh')
-        cls.mesh1 = MeshBody(data1.points, data1.cells_dict, velocity=np.float64([0, 500, 0]))
-        cls.mesh2 = MeshBody(data2.points, data2.cells_dict)
-        cls.global_mesh = GlobalMesh(cls.mesh1, cls.mesh2, bs=0.5)
-        cls.test_surf = cls.global_mesh.surfaces[27]
+    single_element = MeshBody(
+        np.array([
+            [0, 0, 0],
+            [1, 0, 0],
+            [1, 1, 0],
+            [0, 1, 0],
+            [0, 0, 1],
+            [1, 0, 1],
+            [1, 1, 1],
+            [0, 1, 1]
+        ], dtype=np.float64),
+        {'hexahedron': np.array([
+            [0, 1, 2, 3, 4, 5, 6, 7]
+        ])}
+    )
+
+    half_points = np.array([
+        [0, 0, 0],
+        [0.5, 0, 0],
+        [0.5, 0.5, 0],
+        [0, 0.5, 0],
+        [0, 0, 0.5],
+        [0.5, 0, 0.5],
+        [0.5, 0.5, 0.5],
+        [0, 0.5, 0.5],
+        [0, 1, 0],
+        [0.5, 1, 0],
+        [0.5, 1, 0.5],
+        [0, 1, 0.5]
+    ])
+
+    half_points = np.add(half_points, np.array([0.1, 1.1, 0.1]))  # shift points to put it on top of the single element
+
+    # A 0.5x1x0.5 mesh moving downward at 10 in/s
+    half_by_1_by_half = MeshBody(
+        half_points,
+        {'hexahedron': np.array([
+            [0, 1, 2, 3, 4, 5, 6, 7],
+            [3, 2, 9, 8, 7, 6, 10, 11]
+        ])}, velocity=np.array([0, -10, 0]))
+
+    global_mesh2 = GlobalMesh(single_element, half_by_1_by_half, bs=0.25)
+
+    # The following attributes are defined for the contact check with vary random velocities and points to verify the
+    # math for finding delta_tc. A visual confirmation is provided in the contact_check_visual.py file.
+    _points = np.array([
+        [0.5, 0.5, 1],  # Updated Point 1
+        [1, 0.5, 2],  # Updated Point 2
+        [1, 1, 3],  # Updated Point 3
+        [0.5, 1, 2]  # Updated Point 4
+    ])
+
+    # Define velocity for points
+    _vels = np.array([
+        [1.2, 0.8, -0.5],
+        [0.7, 0.75, -0.25],
+        [-0.6, -0.3, -3.4],
+        [-0.65, -0.35, -4.2]
+    ])
+
+    _nodes = [Node(i, pos, vel) for i, (pos, vel) in enumerate(list(zip(_points, _vels)))]
+    random_surf = Surface(0, list(reversed(_nodes)))
+    _sep_point = np.array([0.75, 0.75, 1])
+    _v = np.array([0.1, -0.1, 8])
+    sep_node = Node(len(_nodes), _sep_point, _v)
 
     def test_reverse_dir(self):
         dir1 = np.array([0, 0.25, 0])
@@ -65,6 +127,24 @@ class TestContact(unittest.TestCase):
             [0, 8, 12, 1, 9, 13, 11, 20, 3, 17, 27, 35, 39, 10, 2, 15, 28, 40, 38, 47, 36, 30, 44, 37, 29, 42, 21, 24,
              26, 22, 23, 48, 51, 53, 49, 50, 4, 14, 5, 16, 19, 25, 7, 31, 41, 18, 6, 32, 46, 52, 43, 34, 45, 33])
         np.testing.assert_array_equal(TestContact.global_mesh.nsort, nsort)
+
+    def test_find_nodes(self):
+        _, nodes = TestContact.global_mesh.find_nodes(TestContact.test_surf.label, TestContact.dt1)
+        np.testing.assert_array_equal(nodes, np.array([3, 10, 11, 19, 20, 24, 25, 26, 27, 31, 35, 39, 41, 48]))
+
+        _, nodes2 = TestContact.global_mesh2.find_nodes(4, 0.07)
+        np.testing.assert_array_equal(nodes2, np.array([8, 9, 10, 11, 12, 13, 14, 15]))
+
+    def test_contact_check(self):
+        nodes = [31, 39, 41, 48]
+        sol = [TestContact.global_mesh.contact_check(27, node, TestContact.dt1) for node in nodes]
+        true_list = [s[0] for s in sol]
+        self.assertListEqual(true_list, [True]*4)
+
+        # Testing random velocities
+        sol_rand = TestContact.random_surf.contact_check(TestContact.sep_node, 0.1)
+        self.assertTrue(sol_rand[0], True)
+        self.assertEqual(sol_rand[1], 0.09273273146222077)
 
 
 if __name__ == '__main__':

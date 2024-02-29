@@ -93,7 +93,7 @@ class Node:
 
 
 class Surface:
-    def __init__(self, label, nodes):
+    def __init__(self, label: int, nodes: list):
         """
         :param label: int; The surface id.
         :param nodes: list; The list of node objects that define the surface.
@@ -150,6 +150,76 @@ class Surface:
         xc_min, yc_min, zc_min = np.amin(bounds, axis=0)
         return xc_max, yc_max, zc_max, xc_min, yc_min, zc_min
 
+    # noinspection PyUnusedLocal
+    def contact_check(self, node: Node, dt: float, tol=1e-15):
+        """
+        This is the detailed contact check that comes from section 3.2.1 in the Sandia paper.
+
+        :param node: Node; The node object to be tested for contact.
+        :param dt: float; The current time step in the analysis.
+        :param tol: float; The tolerance of the area. If the calculated result is less than this, then it is considered
+                    an area of zero.
+        :return: tuple; Returns True or False indicated that the node will pass through the surface within the next time
+                 step. Additionally, it returns the time until contact as well as the triangular areas that make up the
+                 surface. If all areas are positive and the delta t is between 0 and dt, then the node will pass through
+                 the surface.
+        """
+
+        # Find the time it takes for the slave node to reach the master surface
+        # Finding delta t. Refer to the "Velocity Based Contact Check" file for the mathematical inspiration.
+        x1, y1, z1 = self.nodes[0].pos
+        x2, y2, z2 = self.nodes[1].pos
+        x3, y3, z3 = self.nodes[2].pos
+        x1_dot, y1_dot, z1_dot = self.nodes[0].vel
+        x2_dot, y2_dot, z2_dot = self.nodes[1].vel
+        x3_dot, y3_dot, z3_dot = self.nodes[2].vel
+
+        xs, ys, zs = node.pos
+        xs_dot, ys_dot, zs_dot = node.vel
+
+        b0 = -x1*y2*z3 + x1*y2*zs + x1*y3*z2 - x1*y3*zs - x1*ys*z2 + x1*ys*z3 + x2*y1*z3 - x2*y1*zs - x2*y3*z1 + x2*y3*zs + x2*ys*z1 - x2*ys*z3 - x3*y1*z2 + x3*y1*zs + x3*y2*z1 - x3*y2*zs - x3*ys*z1 + x3*ys*z2 + xs*y1*z2 - xs*y1*z3 - xs*y2*z1 + xs*y2*z3 + xs*y3*z1 - xs*y3*z2
+        b1 = -x1_dot*y2*z3 + x1_dot*y2*zs + x1_dot*y3*z2 - x1_dot*y3*zs - x1_dot*ys*z2 + x1_dot*ys*z3 + x2_dot*y1*z3 - x2_dot*y1*zs - x2_dot*y3*z1 + x2_dot*y3*zs + x2_dot*ys*z1 - x2_dot*ys*z3 - x3_dot*y1*z2 + x3_dot*y1*zs + x3_dot*y2*z1 - x3_dot*y2*zs - x3_dot*ys*z1 + x3_dot*ys*z2 + xs_dot*y1*z2 - xs_dot*y1*z3 - xs_dot*y2*z1 + xs_dot*y2*z3 + xs_dot*y3*z1 - xs_dot*y3*z2 + y1_dot*x2*z3 - y1_dot*x2*zs - y1_dot*x3*z2 + y1_dot*x3*zs + y1_dot*xs*z2 - y1_dot*xs*z3 - y2_dot*x1*z3 + y2_dot*x1*zs + y2_dot*x3*z1 - y2_dot*x3*zs - y2_dot*xs*z1 + y2_dot*xs*z3 + y3_dot*x1*z2 - y3_dot*x1*zs - y3_dot*x2*z1 + y3_dot*x2*zs + y3_dot*xs*z1 - y3_dot*xs*z2 - ys_dot*x1*z2 + ys_dot*x1*z3 + ys_dot*x2*z1 - ys_dot*x2*z3 - ys_dot*x3*z1 + ys_dot*x3*z2 - z1_dot*x2*y3 + z1_dot*x2*ys + z1_dot*x3*y2 - z1_dot*x3*ys - z1_dot*xs*y2 + z1_dot*xs*y3 + z2_dot*x1*y3 - z2_dot*x1*ys - z2_dot*x3*y1 + z2_dot*x3*ys + z2_dot*xs*y1 - z2_dot*xs*y3 - z3_dot*x1*y2 + z3_dot*x1*ys + z3_dot*x2*y1 - z3_dot*x2*ys - z3_dot*xs*y1 + z3_dot*xs*y2 + zs_dot*x1*y2 - zs_dot*x1*y3 - zs_dot*x2*y1 + zs_dot*x2*y3 + zs_dot*x3*y1 - zs_dot*x3*y2
+        b2 = -x1_dot*y2_dot*z3 + x1_dot*y2_dot*zs + x1_dot*y3_dot*z2 - x1_dot*y3_dot*zs - x1_dot*ys_dot*z2 + x1_dot*ys_dot*z3 + x1_dot*z2_dot*y3 - x1_dot*z2_dot*ys - x1_dot*z3_dot*y2 + x1_dot*z3_dot*ys + x1_dot*zs_dot*y2 - x1_dot*zs_dot*y3 + x2_dot*y1_dot*z3 - x2_dot*y1_dot*zs - x2_dot*y3_dot*z1 + x2_dot*y3_dot*zs + x2_dot*ys_dot*z1 - x2_dot*ys_dot*z3 - x2_dot*z1_dot*y3 + x2_dot*z1_dot*ys + x2_dot*z3_dot*y1 - x2_dot*z3_dot*ys - x2_dot*zs_dot*y1 + x2_dot*zs_dot*y3 - x3_dot*y1_dot*z2 + x3_dot*y1_dot*zs + x3_dot*y2_dot*z1 - x3_dot*y2_dot*zs - x3_dot*ys_dot*z1 + x3_dot*ys_dot*z2 + x3_dot*z1_dot*y2 - x3_dot*z1_dot*ys - x3_dot*z2_dot*y1 + x3_dot*z2_dot*ys + x3_dot*zs_dot*y1 - x3_dot*zs_dot*y2 + xs_dot*y1_dot*z2 - xs_dot*y1_dot*z3 - xs_dot*y2_dot*z1 + xs_dot*y2_dot*z3 + xs_dot*y3_dot*z1 - xs_dot*y3_dot*z2 - xs_dot*z1_dot*y2 + xs_dot*z1_dot*y3 + xs_dot*z2_dot*y1 - xs_dot*z2_dot*y3 - xs_dot*z3_dot*y1 + xs_dot*z3_dot*y2 - y1_dot*z2_dot*x3 + y1_dot*z2_dot*xs + y1_dot*z3_dot*x2 - y1_dot*z3_dot*xs - y1_dot*zs_dot*x2 + y1_dot*zs_dot*x3 + y2_dot*z1_dot*x3 - y2_dot*z1_dot*xs - y2_dot*z3_dot*x1 + y2_dot*z3_dot*xs + y2_dot*zs_dot*x1 - y2_dot*zs_dot*x3 - y3_dot*z1_dot*x2 + y3_dot*z1_dot*xs + y3_dot*z2_dot*x1 - y3_dot*z2_dot*xs - y3_dot*zs_dot*x1 + y3_dot*zs_dot*x2 + ys_dot*z1_dot*x2 - ys_dot*z1_dot*x3 - ys_dot*z2_dot*x1 + ys_dot*z2_dot*x3 + ys_dot*z3_dot*x1 - ys_dot*z3_dot*x2
+        b3 = -x1_dot*y2_dot*z3_dot + x1_dot*y2_dot*zs_dot + x1_dot*y3_dot*z2_dot - x1_dot*y3_dot*zs_dot - x1_dot*ys_dot*z2_dot + x1_dot*ys_dot*z3_dot + x2_dot*y1_dot*z3_dot - x2_dot*y1_dot*zs_dot - x2_dot*y3_dot*z1_dot + x2_dot*y3_dot*zs_dot + x2_dot*ys_dot*z1_dot - x2_dot*ys_dot*z3_dot - x3_dot*y1_dot*z2_dot + x3_dot*y1_dot*zs_dot + x3_dot*y2_dot*z1_dot - x3_dot*y2_dot*zs_dot - x3_dot*ys_dot*z1_dot + x3_dot*ys_dot*z2_dot + xs_dot*y1_dot*z2_dot - xs_dot*y1_dot*z3_dot - xs_dot*y2_dot*z1_dot + xs_dot*y2_dot*z3_dot + xs_dot*y3_dot*z1_dot - xs_dot*y3_dot*z2_dot
+
+        # Solve the cubic equation. There could be three solutions, but there must be at least one real solution. If the
+        # real solution is not between 0 and dt, then return False.
+        del_tc = np.roots([b3, b2, b1, b0])
+        del_tc = del_tc[np.imag(del_tc) == 0]
+        del_tc = del_tc[np.logical_and(del_tc >= 0, del_tc <= dt)]
+
+        if del_tc.size == 0:
+            return False, None, []
+        else:
+            del_tc = np.real(del_tc[0])
+
+        # Check if the contact point is within the bounds of the surface by computing the areas.
+        contact_point = node.pos + node.vel*del_tc
+        areas = []
+        # The surface also needs to shifted to where the contact occurs.
+        plane_points = self.points + self.vel_points*del_tc
+        shifted = np.roll(plane_points, -1, axis=0)
+        for p2, p1 in zip(plane_points, shifted):
+            # Compute the cross product between a side of the surface and the vector going from the tip head of this
+            # side vector to the contact point.
+            vec1 = p1 - p2
+            vec2 = contact_point - p1
+            # noinspection PyUnreachableCode
+            cross = np.cross(vec1, vec2)
+
+            # If the cross product is in the direction of the surface direction, then it's a positive area.
+            if np.dot(cross, self.dir) >= 0:
+                s = 1
+            else:
+                s = -1
+
+            area = s*1/2*np.linalg.norm(cross)  # area formula for cross products.
+            area = 0. if -tol <= area <= tol else area
+
+            areas.append(area)
+
+        return all(np.array(areas) >= 0), del_tc, areas
+
     def __eq__(self, other):
         return sorted([node.label for node in self.nodes]) == sorted([node.label for node in other.nodes])
 
@@ -161,7 +231,7 @@ class Surface:
 
 
 class Element:
-    def __init__(self, label, element_type, connectivity, surfaces):
+    def __init__(self, label: int, element_type: str, connectivity: np.ndarray, surfaces: list):
         """
         :param label: int; The element id.
         :param element_type: str; The element type (i.e. hexahedron)
@@ -354,8 +424,7 @@ class GlobalMesh:
         """
         return self.nsort[self.npoint[bucket_id]:self.npoint[bucket_id] + self.nbox[bucket_id]]
 
-    # noinspection PyUnusedLocal
-    def contact_check(self, surface_id, node_id, dt, tol=1e-15):
+    def contact_check(self, surface_id: int, node_id: int, dt: float, tol=1e-15):
         """
         This is the detailed contact check that comes from section 3.2.1 in the Sandia paper.
 
@@ -369,60 +438,6 @@ class GlobalMesh:
                  surface. If all areas are positive and the delta t is between 0 and dt, then the node will pass through
                  the surface.
         """
-        # Find the time it takes for the slave node to reach the master surface
-        surf = self.surfaces[surface_id]
-        slave = self.nodes[node_id]
-
-        # Find delta t. Refer to the "Velocity Based Contact Check" file for the mathematical inspiration.
-        x1, y1, z1 = surf.nodes[0].pos
-        x2, y2, z2 = surf.nodes[1].pos
-        x3, y3, z3 = surf.nodes[2].pos
-        x1_dot, y1_dot, z1_dot = surf.nodes[0].vel
-        x2_dot, y2_dot, z2_dot = surf.nodes[1].vel
-        x3_dot, y3_dot, z3_dot = surf.nodes[2].vel
-
-        xs, ys, zs = slave.pos
-        xs_dot, ys_dot, zs_dot = slave.vel
-
-        b0 = -x1*y2*z3 + x1*y2*zs + x1*y3*z2 - x1*y3*zs - x1*ys*z2 + x1*ys*z3 + x2*y1*z3 - x2*y1*zs - x2*y3*z1 + x2*y3*zs + x2*ys*z1 - x2*ys*z3 - x3*y1*z2 + x3*y1*zs + x3*y2*z1 - x3*y2*zs - x3*ys*z1 + x3*ys*z2 + xs*y1*z2 - xs*y1*z3 - xs*y2*z1 + xs*y2*z3 + xs*y3*z1 - xs*y3*z2
-        b1 = -x1_dot*y2*z3 + x1_dot*y2*zs + x1_dot*y3*z2 - x1_dot*y3*zs - x1_dot*ys*z2 + x1_dot*ys*z3 + x2_dot*y1*z3 - x2_dot*y1*zs - x2_dot*y3*z1 + x2_dot*y3*zs + x2_dot*ys*z1 - x2_dot*ys*z3 - x3_dot*y1*z2 + x3_dot*y1*zs + x3_dot*y2*z1 - x3_dot*y2*zs - x3_dot*ys*z1 + x3_dot*ys*z2 + xs_dot*y1*z2 - xs_dot*y1*z3 - xs_dot*y2*z1 + xs_dot*y2*z3 + xs_dot*y3*z1 - xs_dot*y3*z2 + y1_dot*x2*z3 - y1_dot*x2*zs - y1_dot*x3*z2 + y1_dot*x3*zs + y1_dot*xs*z2 - y1_dot*xs*z3 - y2_dot*x1*z3 + y2_dot*x1*zs + y2_dot*x3*z1 - y2_dot*x3*zs - y2_dot*xs*z1 + y2_dot*xs*z3 + y3_dot*x1*z2 - y3_dot*x1*zs - y3_dot*x2*z1 + y3_dot*x2*zs + y3_dot*xs*z1 - y3_dot*xs*z2 - ys_dot*x1*z2 + ys_dot*x1*z3 + ys_dot*x2*z1 - ys_dot*x2*z3 - ys_dot*x3*z1 + ys_dot*x3*z2 - z1_dot*x2*y3 + z1_dot*x2*ys + z1_dot*x3*y2 - z1_dot*x3*ys - z1_dot*xs*y2 + z1_dot*xs*y3 + z2_dot*x1*y3 - z2_dot*x1*ys - z2_dot*x3*y1 + z2_dot*x3*ys + z2_dot*xs*y1 - z2_dot*xs*y3 - z3_dot*x1*y2 + z3_dot*x1*ys + z3_dot*x2*y1 - z3_dot*x2*ys - z3_dot*xs*y1 + z3_dot*xs*y2 + zs_dot*x1*y2 - zs_dot*x1*y3 - zs_dot*x2*y1 + zs_dot*x2*y3 + zs_dot*x3*y1 - zs_dot*x3*y2
-        b2 = -x1_dot*y2_dot*z3 + x1_dot*y2_dot*zs + x1_dot*y3_dot*z2 - x1_dot*y3_dot*zs - x1_dot*ys_dot*z2 + x1_dot*ys_dot*z3 + x1_dot*z2_dot*y3 - x1_dot*z2_dot*ys - x1_dot*z3_dot*y2 + x1_dot*z3_dot*ys + x1_dot*zs_dot*y2 - x1_dot*zs_dot*y3 + x2_dot*y1_dot*z3 - x2_dot*y1_dot*zs - x2_dot*y3_dot*z1 + x2_dot*y3_dot*zs + x2_dot*ys_dot*z1 - x2_dot*ys_dot*z3 - x2_dot*z1_dot*y3 + x2_dot*z1_dot*ys + x2_dot*z3_dot*y1 - x2_dot*z3_dot*ys - x2_dot*zs_dot*y1 + x2_dot*zs_dot*y3 - x3_dot*y1_dot*z2 + x3_dot*y1_dot*zs + x3_dot*y2_dot*z1 - x3_dot*y2_dot*zs - x3_dot*ys_dot*z1 + x3_dot*ys_dot*z2 + x3_dot*z1_dot*y2 - x3_dot*z1_dot*ys - x3_dot*z2_dot*y1 + x3_dot*z2_dot*ys + x3_dot*zs_dot*y1 - x3_dot*zs_dot*y2 + xs_dot*y1_dot*z2 - xs_dot*y1_dot*z3 - xs_dot*y2_dot*z1 + xs_dot*y2_dot*z3 + xs_dot*y3_dot*z1 - xs_dot*y3_dot*z2 - xs_dot*z1_dot*y2 + xs_dot*z1_dot*y3 + xs_dot*z2_dot*y1 - xs_dot*z2_dot*y3 - xs_dot*z3_dot*y1 + xs_dot*z3_dot*y2 - y1_dot*z2_dot*x3 + y1_dot*z2_dot*xs + y1_dot*z3_dot*x2 - y1_dot*z3_dot*xs - y1_dot*zs_dot*x2 + y1_dot*zs_dot*x3 + y2_dot*z1_dot*x3 - y2_dot*z1_dot*xs - y2_dot*z3_dot*x1 + y2_dot*z3_dot*xs + y2_dot*zs_dot*x1 - y2_dot*zs_dot*x3 - y3_dot*z1_dot*x2 + y3_dot*z1_dot*xs + y3_dot*z2_dot*x1 - y3_dot*z2_dot*xs - y3_dot*zs_dot*x1 + y3_dot*zs_dot*x2 + ys_dot*z1_dot*x2 - ys_dot*z1_dot*x3 - ys_dot*z2_dot*x1 + ys_dot*z2_dot*x3 + ys_dot*z3_dot*x1 - ys_dot*z3_dot*x2
-        b3 = -x1_dot*y2_dot*z3_dot + x1_dot*y2_dot*zs_dot + x1_dot*y3_dot*z2_dot - x1_dot*y3_dot*zs_dot - x1_dot*ys_dot*z2_dot + x1_dot*ys_dot*z3_dot + x2_dot*y1_dot*z3_dot - x2_dot*y1_dot*zs_dot - x2_dot*y3_dot*z1_dot + x2_dot*y3_dot*zs_dot + x2_dot*ys_dot*z1_dot - x2_dot*ys_dot*z3_dot - x3_dot*y1_dot*z2_dot + x3_dot*y1_dot*zs_dot + x3_dot*y2_dot*z1_dot - x3_dot*y2_dot*zs_dot - x3_dot*ys_dot*z1_dot + x3_dot*ys_dot*z2_dot + xs_dot*y1_dot*z2_dot - xs_dot*y1_dot*z3_dot - xs_dot*y2_dot*z1_dot + xs_dot*y2_dot*z3_dot + xs_dot*y3_dot*z1_dot - xs_dot*y3_dot*z2_dot
-
-        # Solve the cubic equation. There could be three solutions, but there must be at least one real solution. If the
-        # real solution is not between 0 and dt, then return False.
-        del_tc = np.roots([b3, b2, b1, b0])
-        del_tc = del_tc[np.imag(del_tc) == 0]
-        del_tc = del_tc[np.logical_and(del_tc >= 0, del_tc <= dt)]
-
-        if del_tc.size == 0:
-            return False, None, []
-        else:
-            del_tc = del_tc[0]
-
-        # Check if the contact point is within the bounds of the surface by computing the areas.
-        contact_point = slave.pos + slave.vel*del_tc
-        areas = []
-        # The surface also needs to shifted to where the contact occurs.
-        plane_points = surf.points + surf.vel_points*del_tc
-        shifted = np.roll(plane_points, -1, axis=0)
-        for p2, p1 in zip(plane_points, shifted):
-            # Compute the cross product between a side of the surface and the vector going from the tip head of this
-            # side vector to the contact point.
-            vec1 = p1 - p2
-            vec2 = contact_point - p1
-            # noinspection PyUnreachableCode
-            cross = np.cross(vec1, vec2)
-
-            # If the cross product is in the direction of the surface direction, then it's a positive area.
-            if np.dot(cross, surf.dir) >= 0:
-                s = 1
-            else:
-                s = -1
-
-            area = s*1/2*np.linalg.norm(cross)  # area formula for cross products.
-            area = 0. if -tol <= area <= tol else area
-
-            areas.append(area)
-
-        return all(np.array(areas) >= 0), del_tc, areas
+        surf = self.surfaces[surface_id]  # See contact_check from class surface.
+        # noinspection PyUnresolvedReferences
+        return surf.contact_check(self.nodes[node_id], dt, tol)
