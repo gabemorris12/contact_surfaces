@@ -327,10 +327,10 @@ class GlobalMesh:
         # Find the bucket id for each node by constructing lbox
         for i, p in enumerate(self.points):
             x, y, z = p
-            Si_x = int((x - self.x_min)/self.bs) + 1
-            Si_y = int((y - self.y_min)/self.bs) + 1
-            Si_z = int((z - self.z_min)/self.bs) + 1
-            self.lbox[i] = (Si_z - 1)*self.Sx*self.Sy + (Si_y - 1)*self.Sx + Si_x - 1
+            Si_x = int((x - self.x_min)/self.bs)
+            Si_y = int((y - self.y_min)/self.bs)
+            Si_z = int((z - self.z_min)/self.bs)
+            self.lbox[i] = Si_z*self.Sx*self.Sy + Si_y*self.Sx + Si_x
             self.nbox[self.lbox[i]] += 1  # increment nbox
 
         # Calculate the pointer for each bucket into a sorted list of nodes
@@ -360,18 +360,18 @@ class GlobalMesh:
          xc_min, yc_min, zc_min) = surf.capture_box(self.vx_max, self.vy_max, self.vz_max, dt)
 
         # Determine the buckets that intersect with the capture box.
-        ibox_min = min(self.Sx, int((xc_min - self.x_min)/self.bs) + 1)
-        jbox_min = min(self.Sy, int((yc_min - self.y_min)/self.bs) + 1)
-        kbox_min = min(self.Sz, int((zc_min - self.z_min)/self.bs) + 1)
-        ibox_max = min(self.Sx, int((xc_max - self.x_min)/self.bs) + 1)
-        jbox_max = min(self.Sy, int((yc_max - self.y_min)/self.bs) + 1)
-        kbox_max = min(self.Sz, int((zc_max - self.z_min)/self.bs) + 1)
+        ibox_min = min(self.Sx, int((xc_min - self.x_min)/self.bs))
+        jbox_min = min(self.Sy, int((yc_min - self.y_min)/self.bs))
+        kbox_min = min(self.Sz, int((zc_min - self.z_min)/self.bs))
+        ibox_max = min(self.Sx, int((xc_max - self.x_min)/self.bs))
+        jbox_max = min(self.Sy, int((yc_max - self.y_min)/self.bs))
+        kbox_max = min(self.Sz, int((zc_max - self.z_min)/self.bs))
 
         buckets, nodes = [], []
         for i in range(ibox_min, ibox_max + 1):
             for j in range(jbox_min, jbox_max + 1):
                 for k in range(kbox_min, kbox_max + 1):
-                    buckets.append((k - 1)*self.Sx*self.Sy + (j - 1)*self.Sx + i - 1)
+                    buckets.append(k*self.Sx*self.Sy + j*self.Sx + i)
 
         for bucket_id in buckets:
             nodes.extend(self.bucket_search(bucket_id))
