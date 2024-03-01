@@ -409,6 +409,15 @@ class GlobalMesh:
 
 
 def find_time(patch_nodes: list[Node], slave_node: Node, dt: float) -> float:
+    """
+    Find the time it takes for a slave node to penetrate a triangular facet.
+
+    :param patch_nodes: list; A list of three node objects that define the plane.
+    :param slave_node: Node; The slave node to determine the time of penetration.
+    :param dt: float; The current time step of the analysis.
+    :return: float | bool; The time between 0 and dt of the intersection or False it doesn't exist or not between
+             0 <= del_tc <= dt.
+    """
     # Find the time it takes for the slave node to reach the triangular patch
     # Finding delta t, Refer to the "Velocity Based Contact Check" file for the mathematical derivation.
     x1, y1, z1 = patch_nodes[0].pos
@@ -439,7 +448,17 @@ def find_time(patch_nodes: list[Node], slave_node: Node, dt: float) -> float:
 
 
 # noinspection PyUnusedLocal
-def check_in_bounds(patch_nodes: list[Node], slave_node: Node, dt: float, tol=1e-15) -> tuple[True, list]:
+def check_in_bounds(patch_nodes: list[Node], slave_node: Node, dt: float, tol=1e-15) -> tuple[bool, list]:
+    """
+    Find the time it takes for a slave node to penetrate a triangular facet.
+
+    :param patch_nodes: list; A list of three node objects that define the plane.
+    :param slave_node: Node; The slave node to determine if it lies within the bounds.
+    :param dt: float; The current time step of the analysis.
+    :param tol: float; If the area is within this tolerance, then it is considered an area of zero.
+    :return: tuple[bool, list]; Returns True or False and the areas of the sub-facets. It's True if all areas are
+             greater than or equal to zero.
+    """
     # noinspection PyUnusedLocal
     contact_point = slave_node.pos + dt*slave_node.vel  # Point of contact with plane
     current_points = np.array([node.pos for node in patch_nodes])  # Current nodal points of the patch

@@ -62,6 +62,7 @@ vel_centroid = np.sum(vels, axis=0)/len(points)
 later_centroid = centroid + vel_centroid*dt
 for p1, p2 in zip(later_points, shifted):
     patch = [[p1, p2, later_centroid]]
+    ax.plot(np.array(patch)[0][:, 0], np.array(patch)[0][:, 1], np.array(patch)[0][:, 2], color='maroon')
     patch = Poly3DCollection(patch, alpha=0.25, facecolor='maroon')
     ax.add_collection3d(patch)
 # new_vertices = [list(later_points)]
