@@ -45,7 +45,6 @@ for p, v in zip(points, vels):
 # c = 1/len(points)*np.sum(points, axis=0)
 # v = (c - sep_point)*3 + np.array([.1, -2, 0])
 v = np.array([2, -0.1, 10.5])
-print(v)
 ax.quiver(*(list(sep_point) + list(v*scale)), arrow_length_ratio=0.15)
 later_sep_point = sep_point + v*dt
 sep_node = Node(len(nodes), sep_point, v)
@@ -82,6 +81,28 @@ ax.set_ylabel('Y')
 ax.set_zlabel('Z')
 
 # Perform contact check
-print(surf.contact_check(sep_node, dt))
+check, del_tc = surf.contact_check(sep_node, dt)
+print('Time to Contact:', del_tc)
+contact_point = sep_point + v*del_tc
+print('Contact Point:', contact_point)
+print()
+at_contact = points + vels*del_tc
+print('Surface Points at Contact:')
+print(at_contact)
+
+fig2, ax2 = plt.subplots(subplot_kw=dict(projection='3d', proj_type='ortho'))
+ax2.set_title('At Contact')
+ax2.view_init(90, -90)
+ax2.scatter([contact_point[0]], [contact_point[1]], [contact_point[2]])
+ax2.scatter(at_contact[:, 0], at_contact[:, 1], at_contact[:, 2])
+
+centroid_at_contact = np.sum(at_contact, axis=0)/len(at_contact)
+ax2.scatter([centroid_at_contact[0]], [centroid_at_contact[1]], [centroid_at_contact[2]])
+at_contact_shifted = np.roll(at_contact, -1, axis=0)
+for p1, p2 in zip(at_contact, at_contact_shifted):
+    patch = [[p1, p2, centroid_at_contact]]
+    ax2.plot(np.array(patch)[0][:, 0], np.array(patch)[0][:, 1], np.array(patch)[0][:, 2], color='maroon')
+    patch = Poly3DCollection(patch, alpha=0.25, facecolor='maroon')
+    ax2.add_collection3d(patch)
 
 plt.show()
