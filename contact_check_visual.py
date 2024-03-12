@@ -1,7 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-from mpl_toolkits.mplot3d import Axes3D
+
 from contact import Node, Surface
 
 dt = 0.1
@@ -26,59 +25,20 @@ nodes = [Node(i, pos, vel) for i, (pos, vel) in enumerate(list(zip(points, vels)
 surf = Surface(0, nodes)
 surf.reverse_dir()
 
-scale = 0.2  # For scaling velocity vectors. Only applied for visual purposes.
-
-later_points = points + vels*dt  # Define the points in the next time step
 
 # Define a separate point
 sep_point = np.array([0.75, 0.75, 1])
 
 # Create the figure and axis
 fig, ax = plt.subplots(subplot_kw=dict(projection='3d', proj_type='ortho'))
-ax: Axes3D = ax
+ax.set_xlabel('x')
+ax.set_ylabel('y')
+ax.set_zlabel('z')
 ax.view_init(15, 15)
 
-for p, v in zip(points, vels):
-    args = list(p) + list(v*scale)
-    ax.quiver(*args, arrow_length_ratio=0.15)
-
-# c = 1/len(points)*np.sum(points, axis=0)
-# v = (c - sep_point)*3 + np.array([.1, -2, 0])
 v = np.array([2, -0.1, 10.5])
-ax.quiver(*(list(sep_point) + list(v*scale)), arrow_length_ratio=0.15)
 later_sep_point = sep_point + v*dt
 sep_node = Node(len(nodes), sep_point, v)
-
-# Plot the surface
-vertices = [list(points)]
-surface = Poly3DCollection(vertices, alpha=0.25, facecolor='cyan')
-ax.add_collection3d(surface)
-
-# Plot triangular patches with the centroid
-shifted = np.roll(later_points, -1, axis=0)
-centroid = np.sum(points, axis=0)/len(points)
-vel_centroid = np.sum(vels, axis=0)/len(points)
-later_centroid = centroid + vel_centroid*dt
-for p1, p2 in zip(later_points, shifted):
-    patch = [[p1, p2, later_centroid]]
-    ax.plot(np.array(patch)[0][:, 0], np.array(patch)[0][:, 1], np.array(patch)[0][:, 2], color='maroon')
-    patch = Poly3DCollection(patch, alpha=0.25, facecolor='maroon')
-    ax.add_collection3d(patch)
-# new_vertices = [list(later_points)]
-# new_surface = Poly3DCollection(new_vertices, alpha=0.25, facecolor='maroon')
-# ax.add_collection3d(new_surface)
-
-# Plot the points
-ax.scatter(points[:, 0], points[:, 1], points[:, 2], color='blue')
-ax.scatter(later_points[:, 0], later_points[:, 1], later_points[:, 2], color='orange')
-ax.scatter([later_centroid[0]], [later_centroid[1]], [later_centroid[2]], color='orange')
-ax.scatter([sep_point[0]], [sep_point[1]], [sep_point[2]], color='red')
-ax.scatter([later_sep_point[0]], [later_sep_point[1]], [later_sep_point[2]], color='green')
-
-# Labels
-ax.set_xlabel('X')
-ax.set_ylabel('Y')
-ax.set_zlabel('Z')
 
 # Perform contact check
 check, del_tc = surf.contact_check(sep_node, dt)
@@ -90,19 +50,6 @@ at_contact = points + vels*del_tc
 print('Surface Points at Contact:')
 print(at_contact)
 
-fig2, ax2 = plt.subplots(subplot_kw=dict(projection='3d', proj_type='ortho'))
-ax2.set_title('At Contact')
-ax2.view_init(90, -90)
-ax2.scatter([contact_point[0]], [contact_point[1]], [contact_point[2]])
-ax2.scatter(at_contact[:, 0], at_contact[:, 1], at_contact[:, 2])
-
-centroid_at_contact = np.sum(at_contact, axis=0)/len(at_contact)
-ax2.scatter([centroid_at_contact[0]], [centroid_at_contact[1]], [centroid_at_contact[2]])
-at_contact_shifted = np.roll(at_contact, -1, axis=0)
-for p1, p2 in zip(at_contact, at_contact_shifted):
-    patch = [[p1, p2, centroid_at_contact]]
-    ax2.plot(np.array(patch)[0][:, 0], np.array(patch)[0][:, 1], np.array(patch)[0][:, 2], color='maroon')
-    patch = Poly3DCollection(patch, alpha=0.25, facecolor='maroon')
-    ax2.add_collection3d(patch)
+surf.contact_visual(ax, sep_node, dt, del_tc)
 
 plt.show()

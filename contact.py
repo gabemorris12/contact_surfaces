@@ -1,4 +1,6 @@
 import numpy as np
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+from mpl_toolkits.mplot3d import Axes3D
 
 
 class MeshBody:
@@ -121,6 +123,7 @@ class Surface:
         temp = self.nodes[1:]
         self.nodes = [self.nodes[0]] + list(reversed(temp))
         self.points = np.array([node.pos for node in self.nodes])
+        self.vel_points = np.array([node.vel for node in self.nodes])
         self.dir = -self.dir
 
     def capture_box(self, vx_max, vy_max, vz_max, dt):
@@ -184,6 +187,56 @@ class Surface:
                     return is_in, del_tc
 
         return False, None
+
+    def contact_visual(self, axes: Axes3D, node: Node, dt: float, del_tc: float):
+
+        # If there is any velocity, then plot the current state. If there is no velocity, then the future state is
+        # the same as the current state.
+        if any(self.vel_points.flatten()):
+            self._decompose_and_plot(self.points, axes, decompose=False)
+
+        # Plot the future state
+        later_points = self.points + dt*self.vel_points
+        self._decompose_and_plot(later_points, axes, patch_color='royalblue', point_color='navy')
+
+        # Plot the slave node
+        axes.scatter([node.pos[0]], [node.pos[1]], [node.pos[2]], color='lime')
+        slave_later = node.pos + dt*node.vel
+        axes.scatter([slave_later[0]], [slave_later[1]], [slave_later[2]], color='lime')
+        axes.plot([node.pos[0], slave_later[0]], [node.pos[1], slave_later[1]],
+                  [node.pos[2], slave_later[2]], color='black', ls='--')
+
+        # Plot the intersection point and surface
+        if del_tc and any(self.vel_points.flatten()):
+            intersect_points = self.points + self.vel_points*del_tc
+            self._decompose_and_plot(intersect_points, axes, patch_color='lightcoral',
+                                     point_color='firebrick')
+            for p1, p2 in zip(self.points, later_points):
+                axes.plot([p1[0], p2[0]], [p1[1], p2[1]], [p1[2], p2[2]], color='black', ls='--')
+
+            contact = node.pos + node.vel*del_tc
+            axes.scatter([contact[0]], [contact[1]], [contact[2]], color='firebrick', marker='x')
+        elif del_tc:
+            contact = node.pos + node.vel*del_tc
+            axes.scatter([contact[0]], [contact[1]], [contact[2]], color='firebrick', marker='x')
+
+    @staticmethod
+    def _decompose_and_plot(points, axes, decompose=True, patch_color="darkgrey", point_color='navy'):
+        # Decompose the surface into facets and plot
+        centroid = np.sum(points, axis=0)/len(points) if decompose else []
+        [axes.scatter([p[0]], [p[1]], [p[2]], color=point_color) for p in list(points) + [centroid] if len(p) != 0]
+
+        if not decompose:
+            # axes.plot(points[:, 0], points[:, 1], points[:, 2], color=patch_color)
+            patch = Poly3DCollection([points], color=patch_color, alpha=0.25, lw=1.5)
+            axes.add_collection(patch)
+        else:
+            shifted = np.roll(points, -1, axis=0)
+            for p1, p2 in zip(points, shifted):
+                patch = np.array([[p1, p2, centroid]])
+                axes.plot(patch[0, :, 0], patch[0, :, 1], patch[0, :, 2], color=patch_color)
+                patch = Poly3DCollection(patch, alpha=0.25, facecolor=patch_color)
+                axes.add_collection(patch)
 
     def __eq__(self, other):
         return sorted([node.label for node in self.nodes]) == sorted([node.label for node in other.nodes])
