@@ -189,6 +189,14 @@ class Surface:
         return False, None
 
     def contact_visual(self, axes: Axes3D, node: Node, dt: float, del_tc: float):
+        """
+        Generates a 3D plot of the contact check for visual confirmation.
+
+        :param axes: Axes3D; A 3D axes object to generate the plot on.
+        :param node: Node; The slave node object that is being tested.
+        :param dt: float; The current time step in the analysis.
+        :param del_tc: float; The delta time to contact.
+        """
 
         # If there is any velocity, then plot the current state. If there is no velocity, then the future state is
         # the same as the current state.
