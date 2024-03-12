@@ -210,7 +210,7 @@ class Surface:
         # Plot the slave node
         axes.scatter([node.pos[0]], [node.pos[1]], [node.pos[2]], color='lime')
         slave_later = node.pos + dt*node.vel
-        axes.scatter([slave_later[0]], [slave_later[1]], [slave_later[2]], color='lime')
+        axes.scatter([slave_later[0]], [slave_later[1]], [slave_later[2]], color='orangered', marker="^")
         axes.plot([node.pos[0], slave_later[0]], [node.pos[1], slave_later[1]],
                   [node.pos[2], slave_later[2]], color='black', ls='--')
 

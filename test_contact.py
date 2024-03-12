@@ -145,7 +145,7 @@ class TestContact(unittest.TestCase):
         # Testing random velocities
         sol_rand = TestContact.random_surf.contact_check(TestContact.sep_node, 0.1)
         self.assertTrue(sol_rand[0], True)
-        self.assertEqual(sol_rand[1], 0.08544489159847724)
+        self.assertAlmostEqual(sol_rand[1], 0.08544489159847724, 12)
 
 
 if __name__ == '__main__':

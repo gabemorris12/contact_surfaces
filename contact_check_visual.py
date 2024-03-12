@@ -7,10 +7,10 @@ dt = 0.1
 
 # Define points for surface
 points = np.array([
-    [0.5, 0.5, 1],  # Updated Point 1
-    [1, 0.5, 2],  # Updated Point 2
-    [1, 1, 3],  # Updated Point 3
-    [0.5, 1, 2]  # Updated Point 4
+    [0.5, 0.5, 1],
+    [1, 0.5, 2],
+    [1, 1, 3],
+    [0.5, 1, 2]
 ])
 
 # Define velocity for points
@@ -24,7 +24,6 @@ vels = np.array([
 nodes = [Node(i, pos, vel) for i, (pos, vel) in enumerate(list(zip(points, vels)))]
 surf = Surface(0, nodes)
 surf.reverse_dir()
-
 
 # Define a separate point
 sep_point = np.array([0.75, 0.75, 1])
