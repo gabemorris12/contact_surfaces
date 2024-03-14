@@ -138,6 +138,9 @@ class Surface:
         points: numpy.array; An array of coordinate points corresponding to 'nodes'.
         vel_points: numpy.array; An array of velocity for each node in 'nodes'.
         dir: numpy.array; The direction of the surface. This should be outward for the external surfaces.
+        ref_plane: tuple; A tuple consisting of the reference plane and the value of the reference plane. The reference
+                   plane is represented by an integer (0 - xi, 1 - eta, 2 - zeta). The value must be either 1 or -1.
+                   This does not get determined until _set_reference_plane is called.
         """
         self.label, self.nodes = label, nodes
         self.points = np.array([node.pos for node in self.nodes])
@@ -148,6 +151,7 @@ class Surface:
 
         # noinspection PyUnreachableCode
         self.dir = np.cross(vecs[0], vecs[1])
+        self.ref_plane = None
 
     def reverse_dir(self):
         """
@@ -221,6 +225,17 @@ class Surface:
 
         return False, None
 
+    def get_contact_point(self, node: Node, guess: np.ndarray):
+        """
+        Find the contact point in the reference space with the given slave node. The guess is an array consisting of
+        [xi, eta, del_tc] if the surface is on the zeta=1 or -1 plane. It doesn't matter which reference plane the
+        surface is on. This is automatically determined.
+
+        :param node: Node; The slave node.
+        :param guess: np.array; The initial guess for the Newton-Raphson scheme.
+        :return: np.array; An array consisting of the two unknown reference coordinates and the time until contact.
+        """
+
     def contact_visual(self, axes: Axes3D, node: Node, dt: float, del_tc: float):
         """
         Generates a 3D plot of the contact check for visual confirmation.
@@ -261,6 +276,40 @@ class Surface:
             contact = node.pos + node.vel*del_tc
             axes.scatter([contact[0]], [contact[1]], [contact[2]], color='firebrick', marker='x')
 
+    def get_changing_reference_points(self) -> tuple:
+        """
+        Looking at the math from the "Finding the Contact Point" file, this method will return xp, yp, zp, their
+        velocities (xp_dot, yp_dot, zp_dot), and the reference points (xi_p, eta_p, zeta_p) to be used for the
+        Newton-Raphson scheme. Note: This method will return the arrays in such an order based on the reference plane.
+        For example, if the reference plane is eta=1, then the order will actually be xp, zp, yp, but mathematically,
+        the points will be xp, yp, zp. This is because we need to make sure that the known point is at the end of the
+        array so that the math will work out. The same goes for the velocities and the reference points.
+
+        So let me re-iterate, zeta_p will always be the reference plane, not necessarily the actual zeta coordinate. All
+        that's happening mathematically is a row interchange operation, which doesn't affect the solution. However, make
+        sure that the slave node properties (xs and xs_dot) interchange as well.
+
+        :return: xp, yp, zp, xp_dot, yp_dot, zp_dot, xi_p, eta_p, zeta_p
+        """
+        assert all([node.ref is not None for node in self.nodes]), 'The reference coordinates have not been set.'
+
+        ref_p, ref_val = self.ref_plane
+        n = self.points.shape[1]
+
+        sp = move_row(np.transpose(self.points), ref_p, n - 1)
+        xp, yp, zp = sp[0, :], sp[1, :], sp[2, :]
+
+        sp_dot = move_row(np.transpose(self.vel_points), ref_p, n - 1)
+        xp_dot, yp_dot, zp_dot = sp_dot[0, :], sp_dot[1, :], sp_dot[2, :]
+
+        ref_points = np.array([node.ref for node in self.nodes])
+        ref_points = move_row(np.transpose(ref_points), ref_p, n - 1)
+        xi_p, eta_p, zeta_p = ref_points[0, :], ref_points[1, :], ref_points[2, :]
+        # noinspection PyTypeChecker
+        assert all(zeta_p == ref_val), 'The reference plane is not consistent with the reference values.'
+
+        return xp, yp, zp, xp_dot, yp_dot, zp_dot, xi_p, eta_p, zeta_p
+
     @staticmethod
     def _decompose_and_plot(points, axes, decompose=True, patch_color="darkgrey", point_color='navy'):
         # Decompose the surface into facets and plot
@@ -278,6 +327,17 @@ class Surface:
                 axes.plot(patch[0, :, 0], patch[0, :, 1], patch[0, :, 2], color=patch_color)
                 patch = Poly3DCollection(patch, alpha=0.25, facecolor=patch_color)
                 axes.add_collection(patch)
+
+    def _set_reference_plane(self):
+        # Determine which reference plane the surface is on. zeta=-1 plane? xi=1 plane? etc.
+        ref = np.array([node.ref for node in self.nodes])
+        for i in range(ref.shape[1]):
+            unique_values = np.unique(ref[:, i])
+            if len(unique_values) == 1:
+                self.ref_plane = i, unique_values[0]
+
+        if self.ref_plane is None:
+            raise ValueError('Could not find the reference plane for the surface.')
 
     def __eq__(self, other):
         return sorted([node.label for node in self.nodes]) == sorted([node.label for node in other.nodes])
@@ -598,3 +658,30 @@ def check_in_bounds(patch_nodes: list[Node], slave_node: Node, dt: float, tol=1e
         areas.append(area)
 
     return all(np.array(areas) >= 0), areas
+
+
+def move_row(arr: np.ndarray, pos: int, new_pos: int) -> np.ndarray:
+    """
+    Move a row from one position to another. Examples:
+
+    > move_row(np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]]), 0, 2)
+    array([[4, 5, 6],
+           [7, 8, 9],
+           [1, 2, 3]])
+
+    :param arr: np.array; The array to be modified.
+    :param pos: int; The current position of the row.
+    :param new_pos: int; The new position of the row.
+    :return: np.array; The modified array.
+    """
+    # Create an index array
+    n = arr.shape[0]  # Number of rows
+    idx = np.arange(n)
+
+    # Remove current item from index
+    idx = np.delete(idx, pos)
+
+    # Insert current position before the target index
+    idx = np.insert(idx, new_pos, pos)
+
+    return arr[idx]

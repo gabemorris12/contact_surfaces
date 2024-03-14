@@ -151,6 +151,28 @@ class TestContact(unittest.TestCase):
             [-1, 1, 1]
         ]))
 
+    def test_get_changing_reference_points(self):
+        ref_points = np.array([
+            [1, 1, -1],
+            [-1, 1, -1],
+            [-1, 1, 1],
+            [1, 1, 1]
+        ])
+        for i, node in enumerate(TestContact.random_surf.nodes):
+            node.ref = ref_points[i]
+
+        TestContact.random_surf._set_reference_plane()
+        xp, yp, zp, xp_dot, yp_dot, zp_dot, xi_p, eta_p, zeta_p = TestContact.random_surf.get_changing_reference_points()
+        np.testing.assert_array_equal(xp, np.array([0.5, 0.5, 1., 1.]))
+        np.testing.assert_array_equal(yp, np.array([1., 2., 3., 2.]))
+        np.testing.assert_array_equal(zp, np.array([0.5, 1., 1., 0.5]))
+        np.testing.assert_array_almost_equal(xp_dot, np.array([0.12, -0.065, -0.06, 2.1]), 12)
+        np.testing.assert_array_almost_equal(yp_dot, np.array([-0.05, -0.42, -0.34, -0.75]), 12)
+        np.testing.assert_array_almost_equal(zp_dot, np.array([0.08, -0.035, -0.03, 2.25]), 12)
+        np.testing.assert_array_equal(xi_p, np.array([1, -1, -1, 1]))
+        np.testing.assert_array_equal(eta_p, np.array([-1, -1, 1, 1]))
+        np.testing.assert_array_equal(zeta_p, np.array([1, 1, 1, 1]))
+
     def test_contact_check(self):
         nodes = [31, 39, 41, 48]
         sol = [TestContact.global_mesh.contact_check(27, node, TestContact.dt1) for node in nodes]
