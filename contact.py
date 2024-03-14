@@ -18,11 +18,14 @@ class MeshBody:
                        surface. The index aligns with that of 'surfaces'.
         surface_dict: dict; A dictionary of surface objects. The keys are tuples consisting of node ids in numerical
                       order. This is useful for getting the surface from the known nodes.
+        get_element_by_surf: dict; A dictionary whose keys are surface objects and values are a list of element objects
+                             corresponding to the element that contains the surface.
         nodes: numpy.array; An array of node objects
         """
         self.points, self.cells_dict, self.velocity = points, cells_dict, velocity
         self.surfaces, self.surface_count = [], np.zeros(self._surface_count(), dtype=np.int32)
         self.surface_dict = dict()
+        self.get_element_by_surf = dict()
         self.elements = []
 
         # noinspection PyTypeChecker
@@ -72,7 +75,14 @@ class MeshBody:
                 self.surfaces.append(surf)
                 self.surface_dict.update({nodes: surf})
 
-        return Element(label, elem_type, self.nodes[con], surfs)
+        elem = Element(label, elem_type, self.nodes[con], surfs)
+        for surf in surfs:
+            if self.get_element_by_surf.get(surf) is None:
+                self.get_element_by_surf.update({surf: [elem]})
+            else:
+                self.get_element_by_surf[surf].append(elem)
+
+        return elem
 
     def __repr__(self):
         return f'MeshBody(elements={len(self.elements)}, surfaces={len(self.surfaces)}, nodes={len(self.nodes)})'
@@ -86,6 +96,29 @@ class Node:
         :param vel: numpy.array; The vector velocity of the node.
         """
         self.label, self.pos, self.vel = label, pos, vel
+        self.xi, self.eta, self.zeta = None, None, None
+        self._ref = []
+
+    @property
+    def ref(self):
+        return self._ref
+
+    @ref.setter
+    def ref(self, ref: list | np.ndarray):
+        """
+        Set the reference coordinates for the node.
+
+        :param ref:
+        :return:
+        """
+        if isinstance(ref, list):
+            ref = np.array(ref)
+        self._ref = ref
+        self.xi, self.eta, self.zeta = ref
+
+    @ref.getter
+    def ref(self):
+        return self._ref
 
     def __sub__(self, other):
         return self.pos - other.pos
@@ -252,6 +285,9 @@ class Surface:
     def __getitem__(self, item):
         return self.nodes[item]
 
+    def __hash__(self):
+        return hash(self.label)
+
     def __repr__(self):
         return f'Surface({self.label}, {[node.label for node in self.nodes]})'
 
@@ -281,6 +317,15 @@ class Element:
             internal_vec = self.centroid - surf[0].pos
             if np.dot(internal_vec, surf.dir) > 0:
                 surf.reverse_dir()
+
+    def set_node_refs(self):
+        """
+        Sets the node references coordinates xi, eta, and zeta for each node in the element.
+        """
+        assert self.type == 'hexahedron', 'Only hexahedron elements are supported.'
+        for node in list(self.surfaces[0].nodes + self.surfaces[1].nodes):
+            rel_pos = node.pos - self.centroid
+            node.ref = np.sign(rel_pos)
 
     def __repr__(self):
         return f'Element({self.label}, {self.type!r}, {[node.label for node in self.connectivity]}, {[surf.label for surf in self.surfaces]})'
@@ -348,6 +393,11 @@ class GlobalMesh:
         for i in range(n_start, len(self.nodes)):
             # noinspection PyUnresolvedReferences
             self.nodes[i].label = i
+
+        # Extending the get_element_by_surf dictionary
+        self.get_element_by_surf = dict()
+        for mesh in self.mesh_bodies:
+            self.get_element_by_surf.update(mesh.get_element_by_surf)
 
         self.x_max, self.y_max, self.z_max = None, None, None
         self.x_min, self.y_min, self.z_min = None, None, None

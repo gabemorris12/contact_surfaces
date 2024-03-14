@@ -136,6 +136,21 @@ class TestContact(unittest.TestCase):
         _, nodes2 = TestContact.global_mesh2.find_nodes(4, 0.07)
         np.testing.assert_array_equal(nodes2, np.array([8, 9, 10, 11, 12, 13, 14, 15]))
 
+    def test_set_node_refs(self):
+        ele = TestContact.global_mesh.elements[0]
+        ele.set_node_refs()
+        ref_array = np.array([node.ref for node in ele.connectivity])
+        np.testing.assert_array_equal(ref_array, np.array([
+            [-1, -1, -1],
+            [1, -1, -1],
+            [1, 1, -1],
+            [-1, 1, -1],
+            [-1, -1, 1],
+            [1, -1, 1],
+            [1, 1, 1],
+            [-1, 1, 1]
+        ]))
+
     def test_contact_check(self):
         nodes = [31, 39, 41, 48]
         sol = [TestContact.global_mesh.contact_check(27, node, TestContact.dt1) for node in nodes]
