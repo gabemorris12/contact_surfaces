@@ -173,6 +173,20 @@ class TestContact(unittest.TestCase):
         np.testing.assert_array_equal(eta_p, np.array([-1, -1, 1, 1]))
         np.testing.assert_array_equal(zeta_p, np.array([1, 1, 1, 1]))
 
+    def test_get_contact_point(self):
+        ref_points = np.array([
+            [1, 1, -1],
+            [-1, 1, -1],
+            [-1, 1, 1],
+            [1, 1, 1]
+        ])
+        for i, node in enumerate(TestContact.random_surf.nodes):
+            node.ref = ref_points[i]
+
+        slave = Node(4, np.array([0.75, 0.75, 1]), np.array([2, -0.1, 10.5]))
+        contact_point, _ = TestContact.random_surf.get_contact_point(slave, np.array([0.5, -0.5, 0.05]))
+        np.testing.assert_array_almost_equal(contact_point, np.array([0.41631963, 0.34774981, 0.08798188]), 8)
+
     def test_contact_check(self):
         nodes = [31, 39, 41, 48]
         sol = [TestContact.global_mesh.contact_check(27, node, TestContact.dt1) for node in nodes]

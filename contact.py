@@ -94,6 +94,10 @@ class Node:
         :param label: int; The node id.
         :param pos: numpy.array; The coordinates of the node.
         :param vel: numpy.array; The vector velocity of the node.
+
+        Optional Instance Variables
+        ---------------------------
+        ref: numpy.array; The reference coordinates for the node. This is used for the Newton-Raphson scheme.
         """
         self.label, self.pos, self.vel = label, pos, vel
         self.xi, self.eta, self.zeta = None, None, None
@@ -225,7 +229,7 @@ class Surface:
 
         return False, None
 
-    def get_contact_point(self, node: Node, guess: np.ndarray):
+    def get_contact_point(self, node: Node, guess: np.ndarray, tol=1e-10, max_iter=30):
         """
         Find the contact point in the reference space with the given slave node. The guess is an array consisting of
         [xi, eta, del_tc] if the surface is on the zeta=1 or -1 plane. It doesn't matter which reference plane the
@@ -233,8 +237,35 @@ class Surface:
 
         :param node: Node; The slave node.
         :param guess: np.array; The initial guess for the Newton-Raphson scheme.
+        :param tol: float; The tolerance for the Newton-Raphson scheme.
+        :param max_iter: int; The maximum number of iterations for the Newton-Raphson scheme.
         :return: np.array; An array consisting of the two unknown reference coordinates and the time until contact.
         """
+
+        if self.ref_plane is None:
+            self._set_reference_plane()
+
+        ref_p, ref_val = self.ref_plane
+
+        xs, ys, zs = move_row(node.pos, ref_p, 2)
+        xs_dot, ys_dot, zs_dot = move_row(node.vel, ref_p, 2)
+        sol = guess
+        xp, yp, zp, xp_dot, yp_dot, zp_dot, xi_p, eta_p, zeta_p = self.get_changing_reference_points()
+
+        for i in range(max_iter):
+            f = get_f(sol, ref_val, xi_p, eta_p, zeta_p, xp, yp, zp, xp_dot, yp_dot, zp_dot, xs, ys, zs,
+                      xs_dot, ys_dot, zs_dot)
+
+            if np.linalg.norm(f) <= tol:
+                break
+
+            j = get_j(sol, ref_val, xi_p, eta_p, zeta_p, xp, yp, zp, xp_dot, yp_dot, zp_dot, xs_dot, ys_dot,
+                      zs_dot)
+
+            sol = sol - np.linalg.inv(j) @ f
+
+        # noinspection PyUnboundLocalVariable
+        return sol, i
 
     def contact_visual(self, axes: Axes3D, node: Node, dt: float, del_tc: float):
         """
@@ -331,13 +362,15 @@ class Surface:
     def _set_reference_plane(self):
         # Determine which reference plane the surface is on. zeta=-1 plane? xi=1 plane? etc.
         ref = np.array([node.ref for node in self.nodes])
+
+        if ref.size == 0: raise RuntimeError('The reference coordinates have not been set.')
+
         for i in range(ref.shape[1]):
             unique_values = np.unique(ref[:, i])
             if len(unique_values) == 1:
                 self.ref_plane = i, unique_values[0]
 
-        if self.ref_plane is None:
-            raise ValueError('Could not find the reference plane for the surface.')
+        if self.ref_plane is None: raise RuntimeError('Could not find the reference plane for the surface.')
 
     def __eq__(self, other):
         return sorted([node.label for node in self.nodes]) == sorted([node.label for node in other.nodes])
@@ -685,3 +718,69 @@ def move_row(arr: np.ndarray, pos: int, new_pos: int) -> np.ndarray:
     idx = np.insert(idx, new_pos, pos)
 
     return arr[idx]
+
+
+def phi_p_3D(xi, eta, zeta, xi_p, eta_p, zeta_p):
+    """
+    The shape function for a 3D linear hex element.
+    """
+    return 0.125*(1 + xi*xi_p)*(1 + eta*eta_p)*(1 + zeta*zeta_p)
+
+
+def d_phi_p_3D_d_xi(eta, zeta, xi_p, eta_p, zeta_p):
+    """
+    The derivative of the shape function with respect to xi for a 3D linear hex element.
+    """
+    return 0.125*xi_p*(1 + eta*eta_p)*(1 + zeta*zeta_p)
+
+
+def d_phi_p_3D_d_eta(xi, zeta, xi_p, eta_p, zeta_p):
+    """
+    The derivative of the shape function with respect to eta for a 3D linear hex element.
+    """
+    return 0.125*eta_p*(1 + xi*xi_p)*(1 + zeta*zeta_p)
+
+
+def get_f(ref, zeta, xi_p, eta_p, zeta_p, xp, yp, zp, xp_dot, yp_dot, zp_dot, xs, ys, zs, xs_dot, ys_dot, zs_dot):
+    """
+    The function f for the Newton-Raphson scheme.
+    """
+    xi, eta, del_t = ref
+
+    # This part is different for higher order elements because the shape function is a little different for each point.
+    phi_p_arr = phi_p_3D(xi, eta, zeta, xi_p, eta_p, zeta_p)
+
+    rhs = np.array([
+        sum(phi_p_arr*(xp + del_t*xp_dot)),
+        sum(phi_p_arr*(yp + del_t*yp_dot)),
+        sum(phi_p_arr*(zp + del_t*zp_dot))
+    ])
+
+    lhs = np.array([
+        xs + del_t*xs_dot,
+        ys + del_t*ys_dot,
+        zs + del_t*zs_dot
+    ])
+
+    return rhs - lhs
+
+
+def get_j(ref, zeta, xi_p, eta_p, zeta_p, xp, yp, zp, xp_dot, yp_dot, zp_dot, xs_dot, ys_dot, zs_dot):
+    """
+    The Jacobian matrix for the Newton-Raphson scheme.
+    """
+    xi, eta, del_t = ref
+
+    # Again, the construction of these arrays are going to be a little different for higher order.
+    phi_p_arr = phi_p_3D(xi, eta, zeta, xi_p, eta_p, zeta_p)
+    d_phi_p_xi_arr = d_phi_p_3D_d_xi(eta, zeta, xi_p, eta_p, zeta_p)
+    d_phi_p_eta_arr = d_phi_p_3D_d_eta(xi, zeta, xi_p, eta_p, zeta_p)
+
+    return np.array([
+        [sum(d_phi_p_xi_arr*(xp + del_t*xp_dot)), sum(d_phi_p_eta_arr*(xp + del_t*xp_dot)),
+         sum(phi_p_arr*xp_dot) - xs_dot],
+        [sum(d_phi_p_xi_arr*(yp + del_t*yp_dot)), sum(d_phi_p_eta_arr*(yp + del_t*yp_dot)),
+         sum(phi_p_arr*yp_dot) - ys_dot],
+        [sum(d_phi_p_xi_arr*(zp + del_t*zp_dot)), sum(d_phi_p_eta_arr*(zp + del_t*zp_dot)),
+         sum(phi_p_arr*zp_dot) - zs_dot]
+    ])
