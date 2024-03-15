@@ -1,6 +1,7 @@
 import numpy as np
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from mpl_toolkits.mplot3d import Axes3D
+import matplotlib.tri as tri
 
 
 class MeshBody:
@@ -340,6 +341,49 @@ class Surface:
         assert all(zeta_p == ref_val), 'The reference plane is not consistent with the reference values.'
 
         return xp, yp, zp, xp_dot, yp_dot, zp_dot, xi_p, eta_p, zeta_p
+
+    def project_surface(self, axes: Axes3D, del_t: float, N=10, alpha=0.25, color='navy', show_grid=False):
+        """
+        Project the surface at time del_t later onto the given axes object.
+
+        :param axes: Axes3D; The 3D axes object to project the surface onto.
+        :param del_t: float; The time to project the surface.
+        :param N: int; The size of the grid in each direction.
+        :param alpha: float; The transparency of the surface.
+        :param color: str; The color of the surface.
+        :param show_grid: bool; Whether to show the grid of the surface.
+        """
+        if self.ref_plane is None:
+            self._set_reference_plane()
+
+        later_points = self.points + del_t*self.vel_points
+        ref_points = np.array([node.ref for node in self.nodes])
+        xp, yp, zp = later_points[:, 0], later_points[:, 1], later_points[:, 2]
+        xi_p, eta_p, zeta_p = ref_points[:, 0], ref_points[:, 1], ref_points[:, 2]
+
+        # Create an index that does not include the index of the reference plane
+        i = np.arange(3)
+        i = i[i != self.ref_plane[0]]
+        ref = np.full((3,), self.ref_plane[1], dtype=np.float64)
+
+        x_values, y_values, z_values = [], [], []
+        dim1 = np.linspace(-1, 1, N)
+        dim2 = np.linspace(-1, 1, N)
+        # dim = np.random.uniform(-1, 1, (100,))
+        for xi in dim1:
+            for eta in dim2:
+                ref[i] = np.array([xi, eta])
+                x, y, z = ref_to_physical(ref, xp, yp, zp, xi_p, eta_p, zeta_p)
+                x_values.append(x)
+                y_values.append(y)
+                z_values.append(z)
+
+        if show_grid:
+            axes.scatter(x_values, y_values, z_values, color='navy', marker='.', alpha=1)
+
+        triangle = tri.Triangulation(x_values, y_values)
+        axes.plot_trisurf(triangle, z_values, color=color, alpha=alpha, linewidth=0)
+        axes.scatter(xp, yp, zp, color=color, alpha=1)
 
     @staticmethod
     def _decompose_and_plot(points, axes, decompose=True, patch_color="darkgrey", point_color='navy'):
@@ -783,4 +827,26 @@ def get_j(ref, zeta, xi_p, eta_p, zeta_p, xp, yp, zp, xp_dot, yp_dot, zp_dot, xs
          sum(phi_p_arr*yp_dot) - ys_dot],
         [sum(d_phi_p_xi_arr*(zp + del_t*zp_dot)), sum(d_phi_p_eta_arr*(zp + del_t*zp_dot)),
          sum(phi_p_arr*zp_dot) - zs_dot]
+    ])
+
+
+def ref_to_physical(ref, xp, yp, zp, xi_p, eta_p, zeta_p):
+    """
+    Map the reference coordinates defined by "ref" to the physical coordinates.
+
+    :param ref: np.array; The (xi, eta, zeta) coordinates.
+    :param xp: np.array; The x coordinates of the points that define the surface.
+    :param yp: ||                           ||                          ||
+    :param zp: ||                           ||                          ||
+    :param xi_p: np.array; The xi points of the reference points that define the surface.
+    :param eta_p: ||                        ||                          ||
+    :param zeta_p: ||                       ||                          ||
+    :return: np.array; The physical coordinates (x, y, z).
+    """
+    xi, eta, zeta = ref
+    phi_p_arr = phi_p_3D(xi, eta, zeta, xi_p, eta_p, zeta_p)
+    return np.array([
+        sum(phi_p_arr*xp),
+        sum(phi_p_arr*yp),
+        sum(phi_p_arr*zp)
     ])
