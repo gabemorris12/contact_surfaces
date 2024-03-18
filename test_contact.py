@@ -82,6 +82,24 @@ class TestContact(unittest.TestCase):
     _v = np.array([2, -0.1, 10.5])
     sep_node = Node(len(_nodes), _sep_point, _v)
 
+    # Define a simple surface on the x-y plane.
+    simple_nodes = [
+        Node(0, np.array([0, 0, 0]), np.array([0, 0, 0])),
+        Node(0, np.array([1, 0, 0]), np.array([0, 0, 0])),
+        Node(0, np.array([1, 1, 0]), np.array([0, 0, 0])),
+        Node(0, np.array([0, 1, 0]), np.array([0, 0, 0]))
+    ]
+    simple_ref = np.array([
+        [-1, -1, 1],
+        [1, -1, 1],
+        [1, 1, 1],
+        [-1, 1, 1]
+    ])
+    simple_surf = Surface(0, simple_nodes)
+
+    for i, node in enumerate(simple_surf.nodes):
+        node.ref = simple_ref[i]
+
     def test_reverse_dir(self):
         dir1 = np.array([0, 0.25, 0])
         dir2 = -dir1
@@ -197,6 +215,30 @@ class TestContact(unittest.TestCase):
         sol_rand = TestContact.random_surf.contact_check(TestContact.sep_node, 0.1)
         self.assertTrue(sol_rand[0], True)
         self.assertAlmostEqual(sol_rand[1], 0.08544489159847724, 12)
+
+    def test_contact_check_through_reference(self):
+        simple_node = Node(0, np.array([0.5, 0.5, 0]), np.array([0, 0, -0.1]))
+        sol = TestContact.simple_surf.contact_check_through_reference(simple_node, 0.1)
+        self.assertEqual(sol[0], True)
+        self.assertEqual(sol[1], 0)
+        np.testing.assert_array_equal(sol[2], np.array([0, 0]))
+
+        # Move to the edge cases
+        simple_node = Node(0, np.array([1, 1, 0]), np.array([0, 0, -0.1]))
+        sol = TestContact.simple_surf.contact_check_through_reference(simple_node, 0.1)
+        self.assertEqual(sol[0], True)
+        np.testing.assert_array_equal(sol[2], np.array([1, 1]))
+
+        # Move to the middle
+        simple_node = Node(0, np.array([0, 0.5, 0]), np.array([0, 0, -0.1]))
+        sol = TestContact.simple_surf.contact_check_through_reference(simple_node, 0.1)
+        self.assertEqual(sol[0], True)
+        np.testing.assert_array_equal(sol[2], np.array([-1, 0]))
+
+        # Move to off the surface
+        simple_node = Node(0, np.array([1.1, 1, 0]), np.array([0, 0, -0.1]))
+        sol = TestContact.simple_surf.contact_check_through_reference(simple_node, 0.1)
+        self.assertEqual(sol[0], False)
 
 
 if __name__ == '__main__':

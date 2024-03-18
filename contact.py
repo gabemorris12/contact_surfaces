@@ -240,7 +240,8 @@ class Surface:
         :param guess: np.array; The initial guess for the Newton-Raphson scheme.
         :param tol: float; The tolerance for the Newton-Raphson scheme.
         :param max_iter: int; The maximum number of iterations for the Newton-Raphson scheme.
-        :return: np.array; An array consisting of the two unknown reference coordinates and the time until contact.
+        :return: tuple; A tuple consisting of the converged reference coordinate up to 'max_iter' and the number of
+                        iterations.
         """
 
         if self.ref_plane is None:
@@ -263,10 +264,52 @@ class Surface:
             j = get_j(sol, ref_val, xi_p, eta_p, zeta_p, xp, yp, zp, xp_dot, yp_dot, zp_dot, xs_dot, ys_dot,
                       zs_dot)
 
-            sol = sol - np.linalg.inv(j) @ f
+            sol = sol - np.linalg.pinv(j) @ f
 
         # noinspection PyUnboundLocalVariable
         return sol, i
+
+    def contact_check_through_reference(self, node: Node, dt: float, tol=1e-12):
+        """
+        This procedure finds the reference point and the delta_tc all at once using a Newton-Raphson scheme. If all the
+        reference points are between -1 and 1, the delta_tc is between 0 and dt, and it took less than 25 iterations to
+        solve then the node will pass through the patch.
+
+        :param node: Node; The node object to be tested for contact.
+        :param dt: float; The current time step in the analysis.
+        :param tol: float; The tolerance of the edge cases. For the end cases where either reference coordinate is
+                    either 1 or -1, the tolerance will adjust for floating point error, ensuring that the edge case is
+                    met.
+        :return: tuple; Returns True or False indicating that the node will pass through the surface within the next
+                 time step. Additionally, it returns the time until contact del_tc (if it's between 0 and dt), the
+                 reference contact point (xi, eta), and the number of iterations for the solution.
+        """
+        guesses = (
+            (0.5, 0.5, dt/2),
+            (-0.5, 0.5, dt/2),
+            (-0.5, -0.5, dt/2),
+            (0.5, -0.5, dt/2)
+        )
+        k = 0
+        del_tc_vals, ref_vals = [], []
+        for guess in guesses:
+            sol = self.get_contact_point(node, np.array(guess), tol)
+            ref = sol[0][:2]
+            del_tc = sol[0][2]
+            k += sol[1]
+
+            for i, ref_coord in enumerate(ref):
+                ref[i] = -1. if -1. - tol <= ref_coord <= -1 + tol else ref_coord
+                ref[i] = 1. if 1. - tol <= ref_coord <= 1. + tol else ref_coord
+
+            if all(np.logical_and(ref >= -1, ref <= 1)) and 0 - tol <= del_tc <= dt + tol and sol[1] <= 25:
+                del_tc = 0 if 0 - tol <= del_tc <= 0 + tol else del_tc
+                del_tc = dt if dt - tol <= del_tc <= dt + tol else del_tc
+                return True, del_tc, ref, k
+            else:
+                del_tc_vals.append(del_tc)
+                ref_vals.append(ref)
+        return False, del_tc_vals, ref_vals, k
 
     def contact_visual(self, axes: Axes3D, node: Node, dt: float, del_tc: float):
         """
@@ -308,6 +351,36 @@ class Surface:
             contact = node.pos + node.vel*del_tc
             axes.scatter([contact[0]], [contact[1]], [contact[2]], color='firebrick', marker='x')
 
+    def contact_visual_through_reference(self, axes: Axes3D, node: Node, dt: float, del_tc: float | None, **kwargs):
+        """
+        Generates a 3D plot of the contact check for visual confirmation.
+
+        :param axes: Axes3D; A 3D axes object to generate the plot on.
+        :param node: Node; The slave node object that is being tested.
+        :param dt: float; The current time step in the analysis.
+        :param del_tc: float; The delta time to contact.
+        """
+        # If there is any velocity, then plot the current state. If there is no velocity, then the future state is
+        # the same as the current state.
+        if any(self.vel_points.flatten()):
+            self.project_surface(axes, 0, show_grid=True, color='darkgrey', **kwargs)
+
+        # Plot the future state
+        self.project_surface(axes, dt, show_grid=True, color='navy', **kwargs)
+
+        # Plot the node
+        axes.scatter(node.pos[0], node.pos[1], node.pos[2], color='lime')
+        slave_later = node.pos + dt*node.vel
+        axes.scatter(slave_later[0], slave_later[1], slave_later[2], color='orangered', marker="^")
+        axes.plot([node.pos[0], slave_later[0]], [node.pos[1], slave_later[1]],
+                  [node.pos[2], slave_later[2]], color='black', ls='--')
+        if del_tc:
+            contact_point = node.pos + del_tc*node.vel
+            axes.scatter(contact_point[0], contact_point[1], contact_point[2], color='firebrick', marker='x')
+
+        if del_tc and any(self.vel_points.flatten()):
+            self.project_surface(axes, del_tc, show_grid=True, color='firebrick', **kwargs)
+
     def get_changing_reference_points(self) -> tuple:
         """
         Looking at the math from the "Finding the Contact Point" file, this method will return xp, yp, zp, their
@@ -324,6 +397,9 @@ class Surface:
         :return: xp, yp, zp, xp_dot, yp_dot, zp_dot, xi_p, eta_p, zeta_p
         """
         assert all([node.ref is not None for node in self.nodes]), 'The reference coordinates have not been set.'
+
+        if self.ref_plane is None:
+            self._set_reference_plane()
 
         ref_p, ref_val = self.ref_plane
         n = self.points.shape[1]
@@ -342,7 +418,8 @@ class Surface:
 
         return xp, yp, zp, xp_dot, yp_dot, zp_dot, xi_p, eta_p, zeta_p
 
-    def project_surface(self, axes: Axes3D, del_t: float, N=10, alpha=0.25, color='navy', show_grid=False):
+    def project_surface(self, axes: Axes3D, del_t: float, N=10, alpha=0.25, color='navy', show_grid=False,
+                        triangulate=False):
         """
         Project the surface at time del_t later onto the given axes object.
 
@@ -352,6 +429,7 @@ class Surface:
         :param alpha: float; The transparency of the surface.
         :param color: str; The color of the surface.
         :param show_grid: bool; Whether to show the grid of the surface.
+        :param triangulate: bool; Whether to use the triangulate method to generate a mesh.
         """
         if self.ref_plane is None:
             self._set_reference_plane()
@@ -379,10 +457,11 @@ class Surface:
                 z_values.append(z)
 
         if show_grid:
-            axes.scatter(x_values, y_values, z_values, color='navy', marker='.', alpha=1)
+            axes.scatter(x_values, y_values, z_values, color=color, marker='.', alpha=1)
 
-        triangle = tri.Triangulation(x_values, y_values)
-        axes.plot_trisurf(triangle, z_values, color=color, alpha=alpha, linewidth=0)
+        if triangulate:
+            triangle = tri.Triangulation(x_values, y_values)
+            axes.plot_trisurf(triangle, z_values, color=color, alpha=alpha, linewidth=0)
         axes.scatter(xp, yp, zp, color=color, alpha=1)
 
     @staticmethod
@@ -654,6 +733,26 @@ class GlobalMesh:
         surf = self.surfaces[surface_id]  # See contact_check from class surface.
         # noinspection PyUnresolvedReferences
         return surf.contact_check(self.nodes[node_id], dt, tol)
+
+    def contact_check_through_reference(self, surface_id: int, node_id: int, dt: float, tol=1e-12):
+        """
+        This procedure finds the reference point and the delta_tc all at once using a Newton-Raphson scheme. If all the
+        reference points are between -1 and 1 and the delta_tc is between 0 and dt, then the node will pass through the
+        patch.
+
+        :param surface_id: int; The surface id.
+        :param node_id: int; The node id to be tested for contact.
+        :param dt: float; The current time step in the analysis.
+        :param tol: float; The tolerance of the edge cases. For the end cases where either reference coordinate is
+                    either 1 or -1, the tolerance will adjust for floating point error, ensuring that the edge case is
+                    met.
+        :return: tuple; Returns True or False indicating that the node will pass through the surface within the next
+                 time step. Additionally, it returns the time until contact del_tc (if it's between 0 and dt), the
+                 reference contact point (xi, eta), and the number of iterations for the solution.
+        """
+        surf = self.surfaces[surface_id]  # See contact_check from class surface.
+        # noinspection PyUnresolvedReferences
+        return surf.contact_check_through_reference(self.nodes[node_id], dt, tol)
 
 
 def find_time(patch_nodes: list[Node], slave_node: Node, dt: float) -> float:
