@@ -240,6 +240,13 @@ class TestContact(unittest.TestCase):
         sol = TestContact.simple_surf.contact_check_through_reference(simple_node, 0.1)
         self.assertEqual(sol[0], False)
 
+        nodes = [31, 39, 41, 48]
+        elem = TestContact.global_mesh.get_element_by_surf[TestContact.global_mesh.surfaces[27]][0]
+        elem.set_node_refs()
+        sol = [TestContact.global_mesh.contact_check_through_reference(27, node, TestContact.dt1) for node in nodes]
+        true_list = [s[0] for s in sol]
+        self.assertListEqual(true_list, [True]*4)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -264,7 +264,7 @@ class Surface:
             j = get_j(sol, ref_val, xi_p, eta_p, zeta_p, xp, yp, zp, xp_dot, yp_dot, zp_dot, xs_dot, ys_dot,
                       zs_dot)
 
-            sol = sol - np.linalg.pinv(j) @ f
+            sol = sol - np.linalg.pinv(j)@f
 
         # noinspection PyUnboundLocalVariable
         return sol, i
