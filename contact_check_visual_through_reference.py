@@ -32,6 +32,7 @@ fig, ax = plt.subplots(subplot_kw=dict(projection='3d', proj_type='ortho'))
 ax.set_xlabel('x')
 ax.set_ylabel('y')
 ax.set_zlabel('z')
+ax.set_aspect('equal')
 
 sol = surf.contact_check_through_reference(slave, dt)
 print(sol)

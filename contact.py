@@ -298,11 +298,7 @@ class Surface:
             del_tc = sol[0][2]
             k += sol[1]
 
-            for i, ref_coord in enumerate(ref):
-                ref[i] = -1. if -1. - tol <= ref_coord <= -1 + tol else ref_coord
-                ref[i] = 1. if 1. - tol <= ref_coord <= 1. + tol else ref_coord
-
-            if all(np.logical_and(ref >= -1, ref <= 1)) and 0 - tol <= del_tc <= dt + tol and sol[1] <= 25:
+            if all(np.logical_and(ref >= -1 - tol, ref <= 1 + tol)) and 0 - tol <= del_tc <= dt + tol and sol[1] <= 25:
                 del_tc = 0 if 0 - tol <= del_tc <= 0 + tol else del_tc
                 del_tc = dt if dt - tol <= del_tc <= dt + tol else del_tc
                 return True, del_tc, ref, k
@@ -351,7 +347,8 @@ class Surface:
             contact = node.pos + node.vel*del_tc
             axes.scatter([contact[0]], [contact[1]], [contact[2]], color='firebrick', marker='x')
 
-    def contact_visual_through_reference(self, axes: Axes3D, node: Node, dt: float, del_tc: float | None, **kwargs):
+    def contact_visual_through_reference(self, axes: Axes3D, node: Node, dt: float, del_tc: float | None,
+                                         only_contact=False, **kwargs):
         """
         Generates a 3D plot of the contact check for visual confirmation.
 
@@ -359,14 +356,16 @@ class Surface:
         :param node: Node; The slave node object that is being tested.
         :param dt: float; The current time step in the analysis.
         :param del_tc: float; The delta time to contact.
+        :param only_contact: bool; Whether to only plot the contact point and surface.
         """
         # If there is any velocity, then plot the current state. If there is no velocity, then the future state is
         # the same as the current state.
-        if any(self.vel_points.flatten()):
+        if any(self.vel_points.flatten()) and not only_contact:
             self.project_surface(axes, 0, show_grid=True, color='darkgrey', **kwargs)
 
         # Plot the future state
-        self.project_surface(axes, dt, show_grid=True, color='navy', **kwargs)
+        if not only_contact:
+            self.project_surface(axes, dt, show_grid=True, color='navy', **kwargs)
 
         # Plot the node
         axes.scatter(node.pos[0], node.pos[1], node.pos[2], color='lime')
@@ -418,7 +417,7 @@ class Surface:
 
         return xp, yp, zp, xp_dot, yp_dot, zp_dot, xi_p, eta_p, zeta_p
 
-    def project_surface(self, axes: Axes3D, del_t: float, N=10, alpha=0.25, color='navy', show_grid=False,
+    def project_surface(self, axes: Axes3D, del_t: float, N=9, alpha=0.25, color='navy', show_grid=False,
                         triangulate=False):
         """
         Project the surface at time del_t later onto the given axes object.
@@ -447,7 +446,6 @@ class Surface:
         x_values, y_values, z_values = [], [], []
         dim1 = np.linspace(-1, 1, N)
         dim2 = np.linspace(-1, 1, N)
-        # dim = np.random.uniform(-1, 1, (100,))
         for xi in dim1:
             for eta in dim2:
                 ref[i] = np.array([xi, eta])
@@ -463,6 +461,14 @@ class Surface:
             triangle = tri.Triangulation(x_values, y_values)
             axes.plot_trisurf(triangle, z_values, color=color, alpha=alpha, linewidth=0)
         axes.scatter(xp, yp, zp, color=color, alpha=1)
+
+    def get_normal(self, ref: np.ndarray):
+        """
+        Get the unit normal vector of the surface at the given reference point.
+
+        :param ref: np.array; (xi, eta) coordinates.
+        :return: np.array; The unit normal at the given reference point.
+        """
 
     @staticmethod
     def _decompose_and_plot(points, axes, decompose=True, patch_color="darkgrey", point_color='navy'):
