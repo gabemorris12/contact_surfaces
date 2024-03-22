@@ -2,6 +2,8 @@ import numpy as np
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.tri as tri
+from matplotlib.patches import FancyArrowPatch
+from mpl_toolkits.mplot3d import proj3d
 
 
 class MeshBody:
@@ -348,7 +350,7 @@ class Surface:
             axes.scatter([contact[0]], [contact[1]], [contact[2]], color='firebrick', marker='x')
 
     def contact_visual_through_reference(self, axes: Axes3D, node: Node, dt: float, del_tc: float | None,
-                                         only_contact=False, **kwargs):
+                                         only_contact=False, penetration=True, **kwargs):
         """
         Generates a 3D plot of the contact check for visual confirmation.
 
@@ -357,6 +359,7 @@ class Surface:
         :param dt: float; The current time step in the analysis.
         :param del_tc: float; The delta time to contact.
         :param only_contact: bool; Whether to only plot the contact point and surface.
+        :param penetration: bool; Whether to plot the penetration components.
         """
         # If there is any velocity, then plot the current state. If there is no velocity, then the future state is
         # the same as the current state.
@@ -373,12 +376,29 @@ class Surface:
         axes.scatter(slave_later[0], slave_later[1], slave_later[2], color='orangered', marker="^")
         axes.plot([node.pos[0], slave_later[0]], [node.pos[1], slave_later[1]],
                   [node.pos[2], slave_later[2]], color='black', ls='--')
-        if del_tc:
+        if del_tc is not None:
             contact_point = node.pos + del_tc*node.vel
-            axes.scatter(contact_point[0], contact_point[1], contact_point[2], color='firebrick', marker='x')
+            axes.scatter(contact_point[0], contact_point[1], contact_point[2], color='gold', marker='x')
 
-        if del_tc and any(self.vel_points.flatten()):
+        if del_tc is not None and any(self.vel_points.flatten()):
             self.project_surface(axes, del_tc, show_grid=True, color='firebrick', **kwargs)
+
+        if penetration and del_tc is not None:
+            ref, _ = self.get_contact_point(node, np.array([0.5, 0.5, del_tc]))
+            n = self.get_normal(ref[:2], del_tc)
+            print(f'Normal: {n} at {ref[:2]}')
+
+            # noinspection PyUnboundLocalVariable
+            p_vec = slave_later - contact_point  # Penetration vector
+            p = np.dot(p_vec, n)*n  # Penetration projection
+            normal_tip = contact_point + n*np.linalg.norm(p)  # Tip of the normal vector
+            penetration_depth = contact_point + p  # The endpoint of the penetration depth
+            arrow_points = np.array([contact_point, normal_tip])
+            penetration_points = np.array([contact_point, penetration_depth, slave_later])
+            arrow_prop_dict = dict(mutation_scale=20, arrowstyle='-|>', color='k', shrinkA=0, shrinkB=0)
+            a = Arrow3D(arrow_points[:, 0], arrow_points[:, 1], arrow_points[:, 2], **arrow_prop_dict)
+            axes.add_artist(a)
+            axes.plot(penetration_points[:, 0], penetration_points[:, 1], penetration_points[:, 2], 'k--')
 
     def get_changing_reference_points(self) -> tuple:
         """
@@ -462,13 +482,37 @@ class Surface:
             axes.plot_trisurf(triangle, z_values, color=color, alpha=alpha, linewidth=0)
         axes.scatter(xp, yp, zp, color=color, alpha=1)
 
-    def get_normal(self, ref: np.ndarray):
+    def get_normal(self, ref: np.ndarray, del_t: float):
         """
-        Get the unit normal vector of the surface at the given reference point.
+        Get the unit normal vector of the surface at the given reference point and time.
 
         :param ref: np.array; (xi, eta) coordinates.
+        :param del_t: float; The instant in time to determine the normal.
         :return: np.array; The unit normal at the given reference point.
         """
+        # The normal is defined as the cross product between dr/dxi and dr/deta where r is the position vector.
+        later_points = self.points + del_t*self.vel_points
+        xp, yp, zp = later_points[:, 0], later_points[:, 1], later_points[:, 2]
+        *_, xi_p, eta_p, zeta_p = self.get_changing_reference_points()
+        xi, eta = ref
+
+        d_phi_p_2D_d_xi = 0.25*(1 + eta*eta_p)*xi_p
+        d_phi_p_2D_d_eta = 0.25*(1 + xi*xi_p)*eta_p
+
+        dr_dxi = np.array([
+            sum(d_phi_p_2D_d_xi*xp),
+            sum(d_phi_p_2D_d_xi*yp),
+            sum(d_phi_p_2D_d_xi*zp)
+        ])
+        dr_deta = np.array([
+            sum(d_phi_p_2D_d_eta*xp),
+            sum(d_phi_p_2D_d_eta*yp),
+            sum(d_phi_p_2D_d_eta*zp)
+        ])
+
+        # noinspection PyUnreachableCode
+        cross = np.cross(dr_dxi, dr_deta)
+        return cross/np.linalg.norm(cross)
 
     @staticmethod
     def _decompose_and_plot(points, axes, decompose=True, patch_color="darkgrey", point_color='navy'):
@@ -955,3 +999,17 @@ def ref_to_physical(ref, xp, yp, zp, xi_p, eta_p, zeta_p):
         sum(phi_p_arr*yp),
         sum(phi_p_arr*zp)
     ])
+
+
+# This class is for a better looking 3D arrow in plots.
+class Arrow3D(FancyArrowPatch):
+    def __init__(self, xs, ys, zs, *args, **kwargs):
+        super().__init__((0, 0), (0, 0), *args, **kwargs)
+        self._verts3d = xs, ys, zs
+
+    def do_3d_projection(self):
+        xs3d, ys3d, zs3d = self._verts3d
+        xs, ys, zs = proj3d.proj_transform(xs3d, ys3d, zs3d, self.axes.M)
+        self.set_positions((xs[0], ys[0]), (xs[1], ys[1]))
+
+        return np.min(zs)

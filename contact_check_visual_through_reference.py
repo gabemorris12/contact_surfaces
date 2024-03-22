@@ -42,6 +42,6 @@ if sol[0]:
 else:
     del_tc = None
 
-surf.contact_visual_through_reference(ax, slave, dt, del_tc)
+surf.contact_visual_through_reference(ax, slave, dt, del_tc, only_contact=True)
 
 plt.show()
