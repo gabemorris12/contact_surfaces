@@ -160,6 +160,10 @@ class Surface:
         self.dir = np.cross(vecs[0], vecs[1])
         self.ref_plane = None
 
+        self.xi_p = np.array([node.xi for node in self.nodes], dtype=np.float64)
+        self.eta_p = np.array([node.eta for node in self.nodes], dtype=np.float64)
+        self.zeta_p = np.array([node.zeta for node in self.nodes], dtype=np.float64)
+
     def reverse_dir(self):
         """
         Reverses the direction of the surface.
@@ -168,6 +172,9 @@ class Surface:
         self.nodes = [self.nodes[0]] + list(reversed(temp))
         self.points = np.array([node.pos for node in self.nodes])
         self.vel_points = np.array([node.vel for node in self.nodes])
+        self.xi_p = np.array([node.xi for node in self.nodes], dtype=np.float64)
+        self.eta_p = np.array([node.eta for node in self.nodes], dtype=np.float64)
+        self.zeta_p = np.array([node.zeta for node in self.nodes], dtype=np.float64)
         self.dir = -self.dir
 
     def capture_box(self, vx_max, vy_max, vz_max, dt):
@@ -513,6 +520,18 @@ class Surface:
         # noinspection PyUnreachableCode
         cross = np.cross(dr_dxi, dr_deta)
         return cross/np.linalg.norm(cross)
+
+    def find_min_distance(self, node: Node, dt: float):
+        """
+        Find the minimum distance between the node and the surface at the given time.
+
+        :param node: Node; The slave node that is in proximity of the surface.
+        :param dt: float; The time to project the surface.
+        """
+
+    def _get_distance(self, coord: np.ndarray):
+        # Find the distance between a node and point on the surface
+        pass
 
     @staticmethod
     def _decompose_and_plot(points, axes, decompose=True, patch_color="darkgrey", point_color='navy'):
