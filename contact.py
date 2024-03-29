@@ -92,11 +92,13 @@ class MeshBody:
 
 
 class Node:
-    def __init__(self, label: int, pos: np.ndarray, vel: np.ndarray):
+    def __init__(self, label: int, pos: np.ndarray, vel: np.ndarray, mass=1.0, corner_force=np.float64([0, 0, 0])):
         """
         :param label: int; The node id.
         :param pos: numpy.array; The coordinates of the node.
         :param vel: numpy.array; The vector velocity of the node.
+        :param mass: float; The mass of the node
+        :param corner_force: numpy.array; The corner force of the node.
 
         Optional Instance Variables
         ---------------------------
@@ -105,6 +107,9 @@ class Node:
         self.label, self.pos, self.vel = label, pos, vel
         self.xi, self.eta, self.zeta = None, None, None
         self._ref = []
+
+        self.mass = mass
+        self.corner_force = corner_force
 
     @property
     def ref(self):
@@ -160,9 +165,7 @@ class Surface:
         self.dir = np.cross(vecs[0], vecs[1])
         self.ref_plane = None
 
-        self.xi_p = np.array([node.xi for node in self.nodes], dtype=np.float64)
-        self.eta_p = np.array([node.eta for node in self.nodes], dtype=np.float64)
-        self.zeta_p = np.array([node.zeta for node in self.nodes], dtype=np.float64)
+        self.xi_p, self.eta_p = None, None
 
     def reverse_dir(self):
         """
@@ -172,10 +175,41 @@ class Surface:
         self.nodes = [self.nodes[0]] + list(reversed(temp))
         self.points = np.array([node.pos for node in self.nodes])
         self.vel_points = np.array([node.vel for node in self.nodes])
-        self.xi_p = np.array([node.xi for node in self.nodes], dtype=np.float64)
-        self.eta_p = np.array([node.eta for node in self.nodes], dtype=np.float64)
-        self.zeta_p = np.array([node.zeta for node in self.nodes], dtype=np.float64)
         self.dir = -self.dir
+
+        if self.xi_p is not None and self.eta_p is not None:
+            ref = np.array([node.ref for node in self.nodes])
+            index = np.arange(3)
+            ref = ref[:, index != self.ref_plane[0]]
+            self.xi_p, self.eta_p = ref[:, 0], ref[:, 1]
+
+    def construct_position_basis(self, del_t=0.0, acc=None):
+        """
+        Construct the position basis matrix for the surface for getting the global position of the surface.
+
+        ⎡p_{0x}  p_{1x}  p_{2x} ... p_{nx}⎤
+        ⎢                                 ⎥
+        ⎢p_{0y}  p_{1y}  p_{2y} ... p_{ny}⎥
+        ⎢                                 ⎥
+        ⎣p_{0z}  p_{1z}  p_{2z} ... p_{nz}⎦
+
+
+        :param del_t: float; If the position of the surface at some time in the future is desired, then the time
+                      increment should be provided.
+        :param acc: np.array; If the acceleration is known, then give it as a two-dimensional array like so
+                    [[acc_x0, acc_y0, acc_z0], [acc_x1, acc_y1, acc_z1], ...]
+        :return: np.array; The position basis matrix as detailed above.
+        """
+
+        p = np.copy(self.points)
+
+        if del_t:
+            p = p + del_t*self.vel_points
+
+        if acc is not None:
+            p = p + 0.5*acc*del_t**2
+
+        return p.transpose()
 
     def capture_box(self, vx_max, vy_max, vz_max, dt):
         """
@@ -256,22 +290,19 @@ class Surface:
         if self.ref_plane is None:
             self._set_reference_plane()
 
-        ref_p, ref_val = self.ref_plane
-
-        xs, ys, zs = move_row(node.pos, ref_p, 2)
-        xs_dot, ys_dot, zs_dot = move_row(node.vel, ref_p, 2)
         sol = guess
-        xp, yp, zp, xp_dot, yp_dot, zp_dot, xi_p, eta_p, zeta_p = self.get_changing_reference_points()
 
         for i in range(max_iter):
-            f = get_f(sol, ref_val, xi_p, eta_p, zeta_p, xp, yp, zp, xp_dot, yp_dot, zp_dot, xs, ys, zs,
-                      xs_dot, ys_dot, zs_dot)
+            # noinspection PyTypeChecker
+            A = self.construct_position_basis(sol[2])
+            f = get_f(sol, A, node.pos, node.vel, self.xi_p, self.eta_p)
 
             if np.linalg.norm(f) <= tol:
                 break
 
-            j = get_j(sol, ref_val, xi_p, eta_p, zeta_p, xp, yp, zp, xp_dot, yp_dot, zp_dot, xs_dot, ys_dot,
-                      zs_dot)
+            partial_A = A.transpose() - self.points
+            partial_A = partial_A.transpose()
+            j = get_j(sol, A, self.xi_p, self.eta_p, partial_A, node.vel)
 
             sol = sol - np.linalg.pinv(j)@f
 
@@ -293,13 +324,14 @@ class Surface:
                  time step. Additionally, it returns the time until contact del_tc (if it's between 0 and dt), the
                  reference contact point (xi, eta), and the number of iterations for the solution.
         """
+        k = 0
         guesses = (
             (0.5, 0.5, dt/2),
             (-0.5, 0.5, dt/2),
             (-0.5, -0.5, dt/2),
-            (0.5, -0.5, dt/2)
+            (0.5, -0.5, dt/2),
+            (0.5, 0.5, 0.)
         )
-        k = 0
         del_tc_vals, ref_vals = [], []
         for guess in guesses:
             sol = self.get_contact_point(node, np.array(guess), tol)
@@ -407,43 +439,6 @@ class Surface:
             axes.add_artist(a)
             axes.plot(penetration_points[:, 0], penetration_points[:, 1], penetration_points[:, 2], 'k--')
 
-    def get_changing_reference_points(self) -> tuple:
-        """
-        Looking at the math from the "Finding the Contact Point" file, this method will return xp, yp, zp, their
-        velocities (xp_dot, yp_dot, zp_dot), and the reference points (xi_p, eta_p, zeta_p) to be used for the
-        Newton-Raphson scheme. Note: This method will return the arrays in such an order based on the reference plane.
-        For example, if the reference plane is eta=1, then the order will actually be xp, zp, yp, but mathematically,
-        the points will be xp, yp, zp. This is because we need to make sure that the known point is at the end of the
-        array so that the math will work out. The same goes for the velocities and the reference points.
-
-        So let me re-iterate, zeta_p will always be the reference plane, not necessarily the actual zeta coordinate. All
-        that's happening mathematically is a row interchange operation, which doesn't affect the solution. However, make
-        sure that the slave node properties (xs and xs_dot) interchange as well.
-
-        :return: xp, yp, zp, xp_dot, yp_dot, zp_dot, xi_p, eta_p, zeta_p
-        """
-        assert all([node.ref is not None for node in self.nodes]), 'The reference coordinates have not been set.'
-
-        if self.ref_plane is None:
-            self._set_reference_plane()
-
-        ref_p, ref_val = self.ref_plane
-        n = self.points.shape[1]
-
-        sp = move_row(np.transpose(self.points), ref_p, n - 1)
-        xp, yp, zp = sp[0, :], sp[1, :], sp[2, :]
-
-        sp_dot = move_row(np.transpose(self.vel_points), ref_p, n - 1)
-        xp_dot, yp_dot, zp_dot = sp_dot[0, :], sp_dot[1, :], sp_dot[2, :]
-
-        ref_points = np.array([node.ref for node in self.nodes])
-        ref_points = move_row(np.transpose(ref_points), ref_p, n - 1)
-        xi_p, eta_p, zeta_p = ref_points[0, :], ref_points[1, :], ref_points[2, :]
-        # noinspection PyTypeChecker
-        assert all(zeta_p == ref_val), 'The reference plane is not consistent with the reference values.'
-
-        return xp, yp, zp, xp_dot, yp_dot, zp_dot, xi_p, eta_p, zeta_p
-
     def project_surface(self, axes: Axes3D, del_t: float, N=9, alpha=0.25, color='navy', show_grid=False,
                         triangulate=False):
         """
@@ -461,22 +456,15 @@ class Surface:
             self._set_reference_plane()
 
         later_points = self.points + del_t*self.vel_points
-        ref_points = np.array([node.ref for node in self.nodes])
         xp, yp, zp = later_points[:, 0], later_points[:, 1], later_points[:, 2]
-        xi_p, eta_p, zeta_p = ref_points[:, 0], ref_points[:, 1], ref_points[:, 2]
-
-        # Create an index that does not include the index of the reference plane
-        i = np.arange(3)
-        i = i[i != self.ref_plane[0]]
-        ref = np.full((3,), self.ref_plane[1], dtype=np.float64)
 
         x_values, y_values, z_values = [], [], []
         dim1 = np.linspace(-1, 1, N)
         dim2 = np.linspace(-1, 1, N)
         for c, xi in enumerate(dim1):
             for eta in dim2:
-                ref[i] = np.array([xi, eta])
-                x, y, z = ref_to_physical(ref, xp, yp, zp, xi_p, eta_p, zeta_p)
+                A = self.construct_position_basis(del_t=del_t)
+                x, y, z = ref_to_physical(np.array([xi, eta]), A, self.xi_p, self.eta_p)
                 x_values.append(x)
                 y_values.append(y)
                 z_values.append(z)
@@ -511,24 +499,13 @@ class Surface:
         :return: np.array; The unit normal at the given reference point.
         """
         # The normal is defined as the cross product between dr/dxi and dr/deta where r is the position vector.
-        later_points = self.points + del_t*self.vel_points
-        xp, yp, zp = later_points[:, 0], later_points[:, 1], later_points[:, 2]
-        *_, xi_p, eta_p, zeta_p = self.get_changing_reference_points()
         xi, eta = ref
 
-        d_phi_p_2D_d_xi = 0.25*(1 + eta*eta_p)*xi_p
-        d_phi_p_2D_d_eta = 0.25*(1 + xi*xi_p)*eta_p
-
-        dr_dxi = np.array([
-            sum(d_phi_p_2D_d_xi*xp),
-            sum(d_phi_p_2D_d_xi*yp),
-            sum(d_phi_p_2D_d_xi*zp)
-        ])
-        dr_deta = np.array([
-            sum(d_phi_p_2D_d_eta*xp),
-            sum(d_phi_p_2D_d_eta*yp),
-            sum(d_phi_p_2D_d_eta*zp)
-        ])
+        d_phi_p_2D_d_xi_arr = d_phi_p_2D_d_xi(eta, self.xi_p, self.eta_p)
+        d_phi_p_2D_d_eta_arr = d_phi_p_2D_d_eta(xi, self.xi_p, self.eta_p)
+        A = self.construct_position_basis(del_t=del_t)
+        dr_dxi = A@d_phi_p_2D_d_xi_arr
+        dr_deta = A@d_phi_p_2D_d_eta_arr
 
         # noinspection PyUnreachableCode
         cross = np.cross(dr_dxi, dr_deta)
@@ -576,6 +553,11 @@ class Surface:
                 self.ref_plane = i, unique_values[0]
 
         if self.ref_plane is None: raise RuntimeError('Could not find the reference plane for the surface.')
+
+        # Finding the xi_p and eta_p values
+        index = np.arange(3)
+        ref = ref[:, index != self.ref_plane[0]]
+        self.xi_p, self.eta_p = ref[:, 0], ref[:, 1]
 
     def __eq__(self, other):
         return sorted([node.label for node in self.nodes]) == sorted([node.label for node in other.nodes])
@@ -918,119 +900,68 @@ def check_in_bounds(patch_nodes: list[Node], slave_node: Node, dt: float, tol=1e
     return all(np.array(areas) >= 0), areas
 
 
-def move_row(arr: np.ndarray, pos: int, new_pos: int) -> np.ndarray:
+def phi_p_2D(xi, eta, xi_p, eta_p):
     """
-    Move a row from one position to another. Examples:
-
-    > move_row(np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]]), 0, 2)
-    array([[4, 5, 6],
-           [7, 8, 9],
-           [1, 2, 3]])
-
-    :param arr: np.array; The array to be modified.
-    :param pos: int; The current position of the row.
-    :param new_pos: int; The new position of the row.
-    :return: np.array; The modified array.
+    The shape function for a 2D linear quad element.
     """
-    # Create an index array
-    n = arr.shape[0]  # Number of rows
-    idx = np.arange(n)
-
-    # Remove current item from index
-    idx = np.delete(idx, pos)
-
-    # Insert current position before the target index
-    idx = np.insert(idx, new_pos, pos)
-
-    return arr[idx]
+    return 0.25*(1 + xi*xi_p)*(1 + eta*eta_p)
 
 
-def phi_p_3D(xi, eta, zeta, xi_p, eta_p, zeta_p):
+def d_phi_p_2D_d_xi(eta, xi_p, eta_p):
     """
-    The shape function for a 3D linear hex element.
+    The derivative of the shape function with respect to xi for a 2D linear quad element.
     """
-    return 0.125*(1 + xi*xi_p)*(1 + eta*eta_p)*(1 + zeta*zeta_p)
+    return 0.25*xi_p*(1 + eta*eta_p)
 
 
-def d_phi_p_3D_d_xi(eta, zeta, xi_p, eta_p, zeta_p):
+def d_phi_p_2D_d_eta(xi, xi_p, eta_p):
     """
-    The derivative of the shape function with respect to xi for a 3D linear hex element.
+    The derivative of the shape function with respect to eta for a 2D linear quad element.
     """
-    return 0.125*xi_p*(1 + eta*eta_p)*(1 + zeta*zeta_p)
+    return 0.25*eta_p*(1 + xi*xi_p)
 
 
-def d_phi_p_3D_d_eta(xi, zeta, xi_p, eta_p, zeta_p):
+def get_f(ref, A, ps, ps_dot, xi_p, eta_p):
     """
-    The derivative of the shape function with respect to eta for a 3D linear hex element.
-    """
-    return 0.125*eta_p*(1 + xi*xi_p)*(1 + zeta*zeta_p)
-
-
-def get_f(ref, zeta, xi_p, eta_p, zeta_p, xp, yp, zp, xp_dot, yp_dot, zp_dot, xs, ys, zs, xs_dot, ys_dot, zs_dot):
-    """
-    The function f for the Newton-Raphson scheme.
+    The function f for the Newton-Raphson scheme. A is the basis matrix as returned by Surface.construct_position_basis.
+    "p" is the slave node position.
     """
     xi, eta, del_t = ref
-
-    # This part is different for higher order elements because the shape function is a little different for each point.
-    phi_p_arr = phi_p_3D(xi, eta, zeta, xi_p, eta_p, zeta_p)
-
-    rhs = np.array([
-        sum(phi_p_arr*(xp + del_t*xp_dot)),
-        sum(phi_p_arr*(yp + del_t*yp_dot)),
-        sum(phi_p_arr*(zp + del_t*zp_dot))
-    ])
-
-    lhs = np.array([
-        xs + del_t*xs_dot,
-        ys + del_t*ys_dot,
-        zs + del_t*zs_dot
-    ])
-
+    phi_p_arr = phi_p_2D(xi, eta, xi_p, eta_p)
+    rhs = A@phi_p_arr
+    lhs = ps + del_t*ps_dot
     return rhs - lhs
 
 
-def get_j(ref, zeta, xi_p, eta_p, zeta_p, xp, yp, zp, xp_dot, yp_dot, zp_dot, xs_dot, ys_dot, zs_dot):
+def get_j(ref, A, xi_p, eta_p, partial_A, ps_dot):
     """
     The Jacobian matrix for the Newton-Raphson scheme.
     """
     xi, eta, del_t = ref
+    phi_p_arr = phi_p_2D(xi, eta, xi_p, eta_p)
+    d_phi_p_xi_arr = d_phi_p_2D_d_xi(eta, xi_p, eta_p)
+    d_phi_p_eta_arr = d_phi_p_2D_d_eta(xi, xi_p, eta_p)
 
-    # Again, the construction of these arrays are going to be a little different for higher order.
-    phi_p_arr = phi_p_3D(xi, eta, zeta, xi_p, eta_p, zeta_p)
-    d_phi_p_xi_arr = d_phi_p_3D_d_xi(eta, zeta, xi_p, eta_p, zeta_p)
-    d_phi_p_eta_arr = d_phi_p_3D_d_eta(xi, zeta, xi_p, eta_p, zeta_p)
+    partial_xi = A@d_phi_p_xi_arr
+    partial_eta = A@d_phi_p_eta_arr
+    partial_del_t = partial_A@phi_p_arr - ps_dot
 
-    return np.array([
-        [sum(d_phi_p_xi_arr*(xp + del_t*xp_dot)), sum(d_phi_p_eta_arr*(xp + del_t*xp_dot)),
-         sum(phi_p_arr*xp_dot) - xs_dot],
-        [sum(d_phi_p_xi_arr*(yp + del_t*yp_dot)), sum(d_phi_p_eta_arr*(yp + del_t*yp_dot)),
-         sum(phi_p_arr*yp_dot) - ys_dot],
-        [sum(d_phi_p_xi_arr*(zp + del_t*zp_dot)), sum(d_phi_p_eta_arr*(zp + del_t*zp_dot)),
-         sum(phi_p_arr*zp_dot) - zs_dot]
-    ])
+    return np.array([partial_xi, partial_eta, partial_del_t]).transpose()
 
 
-def ref_to_physical(ref, xp, yp, zp, xi_p, eta_p, zeta_p):
+def ref_to_physical(ref, A, xi_p, eta_p):
     """
     Map the reference coordinates defined by "ref" to the physical coordinates.
 
     :param ref: np.array; The (xi, eta, zeta) coordinates.
-    :param xp: np.array; The x coordinates of the points that define the surface.
-    :param yp: ||                           ||                          ||
-    :param zp: ||                           ||                          ||
-    :param xi_p: np.array; The xi points of the reference points that define the surface.
-    :param eta_p: ||                        ||                          ||
-    :param zeta_p: ||                       ||                          ||
+    :param A: np.array; The basis matrix as returned by Surface.construct_position_basis.
+    :param xi_p: np.array; The xi coordinates of the nodes that define the surface.
+    :param eta_p: np.array; The eta coordinates of the nodes that define the surface.
     :return: np.array; The physical coordinates (x, y, z).
     """
-    xi, eta, zeta = ref
-    phi_p_arr = phi_p_3D(xi, eta, zeta, xi_p, eta_p, zeta_p)
-    return np.array([
-        sum(phi_p_arr*xp),
-        sum(phi_p_arr*yp),
-        sum(phi_p_arr*zp)
-    ])
+    xi, eta = ref
+    phi_p_arr = phi_p_2D(xi, eta, xi_p, eta_p)
+    return A@phi_p_arr
 
 
 # This class is for a better looking 3D arrow in plots.

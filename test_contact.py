@@ -169,28 +169,6 @@ class TestContact(unittest.TestCase):
             [-1, 1, 1]
         ]))
 
-    def test_get_changing_reference_points(self):
-        ref_points = np.array([
-            [1, 1, -1],
-            [-1, 1, -1],
-            [-1, 1, 1],
-            [1, 1, 1]
-        ])
-        for i, node in enumerate(TestContact.random_surf.nodes):
-            node.ref = ref_points[i]
-
-        TestContact.random_surf._set_reference_plane()
-        xp, yp, zp, xp_dot, yp_dot, zp_dot, xi_p, eta_p, zeta_p = TestContact.random_surf.get_changing_reference_points()
-        np.testing.assert_array_equal(xp, np.array([0.5, 0.5, 1., 1.]))
-        np.testing.assert_array_equal(yp, np.array([1., 2., 3., 2.]))
-        np.testing.assert_array_equal(zp, np.array([0.5, 1., 1., 0.5]))
-        np.testing.assert_array_almost_equal(xp_dot, np.array([0.12, -0.065, -0.06, 2.1]), 12)
-        np.testing.assert_array_almost_equal(yp_dot, np.array([-0.05, -0.42, -0.34, -0.75]), 12)
-        np.testing.assert_array_almost_equal(zp_dot, np.array([0.08, -0.035, -0.03, 2.25]), 12)
-        np.testing.assert_array_equal(xi_p, np.array([1, -1, -1, 1]))
-        np.testing.assert_array_equal(eta_p, np.array([-1, -1, 1, 1]))
-        np.testing.assert_array_equal(zeta_p, np.array([1, 1, 1, 1]))
-
     def test_get_contact_point(self):
         ref_points = np.array([
             [1, 1, -1],
@@ -246,6 +224,39 @@ class TestContact(unittest.TestCase):
         sol = [TestContact.global_mesh.contact_check_through_reference(27, node, TestContact.dt1) for node in nodes]
         true_list = [s[0] for s in sol]
         self.assertListEqual(true_list, [True]*4)
+
+    def test_get_normal(self):
+        dt = 1
+
+        nodes = [
+            Node(0, np.array([1, 0, 0]), np.array([0, 1, 0])),
+            Node(1, np.array([0, 0, 0]), np.array([0, 0.1, 0])),
+            Node(2, np.array([0, 0, 1]), np.array([0, 0.2, 0])),
+            Node(3, np.array([1, 0, 1]), np.array([0, 0, 0]))
+        ]
+
+        ref_points = [
+            [-1, 1, -1],
+            [1, 1, -1],
+            [1, 1, 1],
+            [-1, 1, 1]
+        ]
+
+        for node, ref_point in zip(nodes, ref_points):
+            node.ref = ref_point
+
+        surf = Surface(0, nodes)
+
+        slave = Node(4, np.array([0.25, 1, 0.2]), np.array([0.75, -1, 0]))
+        sol = surf.contact_check_through_reference(slave, dt)
+
+        self.assertEqual(sol[0], True)
+        self.assertAlmostEqual(sol[1], 0.6221606424927081, 12)
+        np.testing.assert_array_almost_equal(sol[2], np.array([-0.4332409637390621, -0.6]), 12)
+
+        n = surf.get_normal(sol[2], sol[1])
+        np.testing.assert_array_almost_equal(n, np.array([-0.36246426756409533, 0.8567492881880666,
+                                                          0.36687915166777346]), 12)
 
 
 if __name__ == '__main__':
