@@ -371,11 +371,11 @@ class Surface:
         # If there is any velocity, then plot the current state. If there is no velocity, then the future state is
         # the same as the current state.
         if any(self.vel_points.flatten()) and not only_contact:
-            self.project_surface(axes, 0, show_grid=True, color='darkgrey', **kwargs)
+            self.project_surface(axes, 0, color='darkgrey', **kwargs)
 
         # Plot the future state
         if not only_contact:
-            self.project_surface(axes, dt, show_grid=True, color='navy', **kwargs)
+            self.project_surface(axes, dt, color='navy', **kwargs)
 
         # Plot the node
         axes.scatter(node.pos[0], node.pos[1], node.pos[2], color='lime')
@@ -388,7 +388,7 @@ class Surface:
             axes.scatter(contact_point[0], contact_point[1], contact_point[2], color='gold', marker='x')
 
         if del_tc is not None and any(self.vel_points.flatten()):
-            self.project_surface(axes, del_tc, show_grid=True, color='firebrick', **kwargs)
+            self.project_surface(axes, del_tc, color='firebrick', **kwargs)
 
         if penetration and del_tc is not None:
             ref, _ = self.get_contact_point(node, np.array([0.5, 0.5, del_tc]))
@@ -473,13 +473,26 @@ class Surface:
         x_values, y_values, z_values = [], [], []
         dim1 = np.linspace(-1, 1, N)
         dim2 = np.linspace(-1, 1, N)
-        for xi in dim1:
+        for c, xi in enumerate(dim1):
             for eta in dim2:
                 ref[i] = np.array([xi, eta])
                 x, y, z = ref_to_physical(ref, xp, yp, zp, xi_p, eta_p, zeta_p)
                 x_values.append(x)
                 y_values.append(y)
                 z_values.append(z)
+
+        points = np.array([x_values, y_values, z_values])
+
+        # Plotting the lines
+        index = np.arange(0, N**2, N, dtype=int)
+        for r, i in enumerate(index):
+            # Plotting the column
+            # noinspection PyTypeChecker
+            axes.plot(x_values[i:i + N], y_values[i:i + N], z_values[i:i + N], color=color, ls='--', alpha=alpha)
+
+            # Plotting the row
+            axes.plot(points[0, index + r], points[1, index + r], points[2, index + r], color=color, ls='--',
+                      alpha=alpha)
 
         if show_grid:
             axes.scatter(x_values, y_values, z_values, color=color, marker='.', alpha=1)
