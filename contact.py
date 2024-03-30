@@ -309,7 +309,7 @@ class Surface:
         # noinspection PyUnboundLocalVariable
         return sol, i
 
-    def contact_check_through_reference(self, node: Node, dt: float, tol=1e-12):
+    def contact_check_through_reference(self, node: Node, dt: float, tol=1e-12, max_iter=30):
         """
         This procedure finds the reference point and the delta_tc all at once using a Newton-Raphson scheme. If all the
         reference points are between -1 and 1, the delta_tc is between 0 and dt, and it took less than 25 iterations to
@@ -320,6 +320,7 @@ class Surface:
         :param tol: float; The tolerance of the edge cases. For the end cases where either reference coordinate is
                     either 1 or -1, the tolerance will adjust for floating point error, ensuring that the edge case is
                     met.
+        :param max_iter: int; The maximum number of iterations for the Newton-Raphson scheme.
         :return: tuple; Returns True or False indicating that the node will pass through the surface within the next
                  time step. Additionally, it returns the time until contact del_tc (if it's between 0 and dt), the
                  reference contact point (xi, eta), and the number of iterations for the solution.
@@ -334,12 +335,13 @@ class Surface:
         )
         del_tc_vals, ref_vals = [], []
         for guess in guesses:
-            sol = self.get_contact_point(node, np.array(guess), tol)
+            sol = self.get_contact_point(node, np.array(guess), tol, max_iter=max_iter)
             ref = sol[0][:2]
             del_tc = sol[0][2]
             k += sol[1]
 
-            if all(np.logical_and(ref >= -1 - tol, ref <= 1 + tol)) and 0 - tol <= del_tc <= dt + tol and sol[1] <= 25:
+            if all(np.logical_and(ref >= -1 - tol, ref <= 1 + tol)) and 0 - tol <= del_tc <= dt + tol and \
+                    sol[1] <= max_iter:
                 del_tc = 0 if 0 - tol <= del_tc <= 0 + tol else del_tc
                 del_tc = dt if dt - tol <= del_tc <= dt + tol else del_tc
                 return True, del_tc, ref, k
