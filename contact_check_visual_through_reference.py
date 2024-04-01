@@ -35,7 +35,7 @@ ax.set_zlabel('z')
 ax.set_aspect('equal')
 ax.view_init(azim=90, elev=0)
 
-sol = surf.contact_check_through_reference(slave, dt, max_iter=100, tol=1e-10)
+sol = surf.contact_check_through_reference(slave, dt)
 print(sol)
 
 if sol[0]:

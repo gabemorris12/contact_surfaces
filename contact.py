@@ -300,8 +300,9 @@ class Surface:
             if np.linalg.norm(f) <= tol:
                 break
 
+            # Partial A is the derivative of A with respect to del_t
             partial_A = A.transpose() - self.points
-            partial_A = partial_A.transpose()
+            partial_A = partial_A.transpose()/sol[2]
             j = get_j(sol, A, self.xi_p, self.eta_p, partial_A, node.vel)
 
             sol = sol - np.linalg.pinv(j)@f
@@ -330,8 +331,7 @@ class Surface:
             (0.5, 0.5, dt/2),
             (-0.5, 0.5, dt/2),
             (-0.5, -0.5, dt/2),
-            (0.5, -0.5, dt/2),
-            (0.5, 0.5, 0.)
+            (0.5, -0.5, dt/2)
         )
         del_tc_vals, ref_vals = [], []
         for guess in guesses:
@@ -921,6 +921,27 @@ def d_phi_p_2D_d_eta(xi, xi_p, eta_p):
     The derivative of the shape function with respect to eta for a 2D linear quad element.
     """
     return 0.25*eta_p*(1 + xi*xi_p)
+
+
+def phi_p_3D(xi, eta, zeta, xi_p, eta_p, zeta_p):
+    """
+    The shape function for a 3D linear hex element.
+    """
+    return 0.125*(1 + xi*xi_p)*(1 + eta*eta_p)*(1 + zeta*zeta_p)
+
+
+def d_phi_p_3D_d_xi(eta, zeta, xi_p, eta_p, zeta_p):
+    """
+    The derivative of the shape function with respect to xi for a 3D linear hex element.
+    """
+    return 0.125*xi_p*(1 + eta*eta_p)*(1 + zeta*zeta_p)
+
+
+def d_phi_p_3D_d_eta(xi, zeta, xi_p, eta_p, zeta_p):
+    """
+    The derivative of the shape function with respect to eta for a 3D linear hex element.
+    """
+    return 0.125*eta_p*(1 + xi*xi_p)*(1 + zeta*zeta_p)
 
 
 def get_f(ref, A, ps, ps_dot, xi_p, eta_p):
