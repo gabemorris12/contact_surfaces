@@ -110,6 +110,13 @@ class Node:
 
         self.mass = mass
         self.corner_force = corner_force
+        self.R = np.zeros((3, ), dtype=np.float64)  # Force due to contact
+
+    def get_acc(self):
+        """
+        :return: The acceleration of the node
+        """
+        return (self.corner_force + self.R)/self.mass
 
     @property
     def ref(self):
@@ -183,7 +190,7 @@ class Surface:
             ref = ref[:, index != self.ref_plane[0]]
             self.xi_p, self.eta_p = ref[:, 0], ref[:, 1]
 
-    def construct_position_basis(self, del_t=0.0, acc=None):
+    def construct_position_basis(self, del_t=0.0):
         """
         Construct the position basis matrix for the surface for getting the global position of the surface.
 
@@ -196,18 +203,15 @@ class Surface:
 
         :param del_t: float; If the position of the surface at some time in the future is desired, then the time
                       increment should be provided.
-        :param acc: np.array; If the acceleration is known, then give it as a two-dimensional array like so
-                    [[acc_x0, acc_y0, acc_z0], [acc_x1, acc_y1, acc_z1], ...]
         :return: np.array; The position basis matrix as detailed above.
         """
 
         p = np.copy(self.points)
 
-        if del_t:
-            p = p + del_t*self.vel_points
+        acc_points = np.array([node.get_acc() for node in self.nodes])
 
-        if acc is not None:
-            p = p + 0.5*acc*del_t**2
+        if del_t:
+            p = p + del_t*self.vel_points + 0.5*acc_points*del_t**2
 
         return p.transpose()
 
@@ -306,6 +310,61 @@ class Surface:
             j = get_j(sol, A, self.xi_p, self.eta_p, partial_A, node.vel)
 
             sol = sol - np.linalg.pinv(j)@f
+
+        # noinspection PyUnboundLocalVariable
+        return sol, i
+
+    def find_fc(self, node: Node, guess: np.ndarray, dt: float, N: np.ndarray, tol=1e-12, max_iter=30):
+        """
+        Find the contact force increment for the current time step so that the node will not pass through the surface.
+
+        :param node: Node; The slave node object.
+        :param guess: np.array; The initial guess for the Newton-Raphson scheme (xi, eta, fc).
+        :param dt: float; The current time step in the analysis.
+        :param N: np.array; The unit normal vector, which is the direction of the force increment.
+        :param tol: float; The tolerance for the Newton-Raphson scheme.
+        :param max_iter: int; The maximum number of iterations for the Newton-Raphson scheme.
+        :return: tuple; The solution (xi, eta, fc) and the number of iterations.
+        """
+
+        if self.ref_plane is None:
+            self._set_reference_plane()
+
+        Fk = np.array([n.corner_force for n in self.nodes])
+        mk = np.array([n.mass for n in self.nodes])
+        Rk = np.array([n.R for n in self.nodes])
+        # A_prime = self.points + self.vel_points*dt + 0.5*dt**2*(Fk + Rk)/mk
+        A_prime = self.points + self.vel_points*dt
+        A_prime = A_prime.transpose() + (Fk + Rk).transpose()*dt**2/(2*mk)
+        Fs, Rs, ms = node.corner_force, node.R, node.mass
+        vs, ps = node.vel, node.pos
+
+        sol = guess
+
+        for i in range(max_iter):
+            xi, eta, fc = sol
+            phi_k = phi_p_2D(xi, eta, self.xi_p, self.eta_p)
+            A = A_prime - np.outer(N, fc/(2*mk)*phi_k*dt**2)
+
+            # Compute F
+            F = dt**2/(2*ms)*(Fs + N*fc + Rs) + dt*vs + ps - A@phi_k
+
+            if np.linalg.norm(F) <= tol:
+                break
+
+            # Compute J
+            d_phi_k_d_xi = d_phi_p_2D_d_xi(eta, self.xi_p, self.eta_p)
+            d_phi_k_d_eta = d_phi_p_2D_d_eta(xi, self.xi_p, self.eta_p)
+            d_A_d_xi = np.outer(-N, d_phi_k_d_xi*dt**2*fc/(2*mk))
+            d_A_d_eta = np.outer(-N, d_phi_k_d_eta*dt**2*fc/(2*mk))
+            d_A_d_fc = np.outer(-N, phi_k*dt**2/(2*mk))
+
+            J0 = -A@d_phi_k_d_xi - d_A_d_xi@phi_k
+            J1 = -A@d_phi_k_d_eta - d_A_d_eta@phi_k
+            J2 = dt**2/(2*ms)*N - d_A_d_fc@phi_k
+            J = np.column_stack((J0, J1, J2))
+
+            sol = sol - np.linalg.inv(J)@F
 
         # noinspection PyUnboundLocalVariable
         return sol, i
@@ -413,10 +472,16 @@ class Surface:
 
         # Plot the node
         axes.scatter(node.pos[0], node.pos[1], node.pos[2], color='lime')
-        slave_later = node.pos + dt*node.vel
+        slave_later = node.pos + dt*node.vel + 0.5*node.get_acc()*dt**2
         axes.scatter(slave_later[0], slave_later[1], slave_later[2], color='orangered', marker="^")
-        axes.plot([node.pos[0], slave_later[0]], [node.pos[1], slave_later[1]],
-                  [node.pos[2], slave_later[2]], color='black', ls='--')
+        # Discretize the line
+        t_values = np.linspace(0, dt, 50)
+        slave_path = []
+        for t in t_values:
+            slave_path.append(node.pos + node.vel*t + 0.5*node.get_acc()*t**2)
+        slave_path = np.array(slave_path)
+        axes.plot(slave_path[:, 0], slave_path[:, 1], slave_path[:, 2], color='black', ls='--')
+
         if del_tc is not None:
             contact_point = node.pos + del_tc*node.vel
             axes.scatter(contact_point[0], contact_point[1], contact_point[2], color='gold', marker='x')
@@ -433,13 +498,14 @@ class Surface:
             p_vec = slave_later - contact_point  # Penetration vector
             p = np.dot(p_vec, n)*n  # Penetration projection
             normal_tip = contact_point + n*np.linalg.norm(p)  # Tip of the normal vector
-            penetration_depth = contact_point + p  # The endpoint of the penetration depth
+            # penetration_depth = contact_point + p  # The endpoint of the penetration depth
             arrow_points = np.array([contact_point, normal_tip])
-            penetration_points = np.array([contact_point, penetration_depth, slave_later])
+            # penetration_points = np.array([contact_point, penetration_depth, slave_later])
             arrow_prop_dict = dict(mutation_scale=20, arrowstyle='-|>', color='k', shrinkA=0, shrinkB=0)
             a = Arrow3D(arrow_points[:, 0], arrow_points[:, 1], arrow_points[:, 2], **arrow_prop_dict)
             axes.add_artist(a)
-            axes.plot(penetration_points[:, 0], penetration_points[:, 1], penetration_points[:, 2], 'k--')
+            # Don't need this for right now.
+            # axes.plot(penetration_points[:, 0], penetration_points[:, 1], penetration_points[:, 2], 'k--')
 
     def project_surface(self, axes: Axes3D, del_t: float, N=9, alpha=0.25, color='navy', show_grid=False,
                         triangulate=False):
@@ -457,15 +523,19 @@ class Surface:
         if self.ref_plane is None:
             self._set_reference_plane()
 
-        later_points = self.points + del_t*self.vel_points
-        xp, yp, zp = later_points[:, 0], later_points[:, 1], later_points[:, 2]
+        A = self.construct_position_basis(del_t=del_t)
+        xp, yp, zp = [], [], []
+        for xi, eta in zip(self.xi_p, self.eta_p):
+            x, y, z = ref_to_physical(np.array([xi, eta]), A, self.xi_p, self.eta_p)
+            xp.append(x)
+            yp.append(y)
+            zp.append(z)
 
         x_values, y_values, z_values = [], [], []
         dim1 = np.linspace(-1, 1, N)
         dim2 = np.linspace(-1, 1, N)
         for c, xi in enumerate(dim1):
             for eta in dim2:
-                A = self.construct_position_basis(del_t=del_t)
                 x, y, z = ref_to_physical(np.array([xi, eta]), A, self.xi_p, self.eta_p)
                 x_values.append(x)
                 y_values.append(y)

@@ -1,7 +1,7 @@
 """
 Visual confirmation using the reference point finding method.
 """
-from contact import Node, Surface
+from contact import Node, Surface, phi_p_2D
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -43,13 +43,25 @@ if sol[0]:
 else:
     del_tc = None
 
-surf.contact_visual_through_reference(ax, slave, dt, del_tc, only_contact=True)
+surf.contact_visual_through_reference(ax, slave, dt, del_tc, only_contact=False)
 
-# Let's plot the line as if it were subject to some force.
-# n = surf.get_normal(sol[2], del_tc)
-# f = .1
-# t = np.linspace(0, dt, 50).reshape(-1, 1)
-# p = slave.pos + slave.vel*t + 0.5*n*f*t**2  # Assume a mass of 1
-# ax.plot(p[:, 0], p[:, 1], p[:, 2], color='r', ls='--')
+N = surf.get_normal(sol[2], del_tc)
+force_sol = surf.find_fc(slave, np.array([sol[2][0], sol[2][1], 2.3]), dt, N)
+print(force_sol)
+xi, eta, fc = force_sol[0]
+
+fig2, ax2 = plt.subplots(subplot_kw=dict(projection='3d', proj_type='ortho'))
+ax2.set_xlabel('x')
+ax2.set_ylabel('y')
+ax2.set_zlabel('z')
+ax2.set_aspect('equal')
+ax2.view_init(azim=90, elev=0)
+
+slave.R = N*fc
+phi_k = phi_p_2D(xi, eta, surf.xi_p, surf.eta_p)
+for phi, node in zip(phi_k, surf.nodes):
+    node.R = -N*fc*phi
+
+surf.contact_visual_through_reference(ax2, slave, dt, None, only_contact=False)
 
 plt.show()
