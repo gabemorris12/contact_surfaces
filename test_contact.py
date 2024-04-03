@@ -218,12 +218,20 @@ class TestContact(unittest.TestCase):
         sol = TestContact.simple_surf.contact_check_through_reference(simple_node, 0.1)
         self.assertEqual(sol[0], False)
 
+        # Classic test as seen in surface_node_detection_through_reference.py
         nodes = [31, 39, 41, 48]
         elem = TestContact.global_mesh.get_element_by_surf[TestContact.global_mesh.surfaces[27]][0]
         elem.set_node_refs()
         sol = [TestContact.global_mesh.contact_check_through_reference(27, node, TestContact.dt1) for node in nodes]
         true_list = [s[0] for s in sol]
         self.assertListEqual(true_list, [True]*4)
+
+        # Testing the case where the slave moves onto the surface, with a trajectory that is perpendicular to the
+        # surface.
+        nodes = [31, 39]
+        sol = [TestContact.global_mesh.contact_check_through_reference(28, node, TestContact.dt1) for node in nodes]
+        false_list = [s[0] for s in sol]
+        self.assertListEqual(false_list, [False]*2)
 
     def test_get_normal(self):
         dt = 1

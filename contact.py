@@ -110,13 +110,13 @@ class Node:
 
         self.mass = mass
         self.corner_force = corner_force
-        self.R = np.zeros((3, ), dtype=np.float64)  # Force due to contact
+        self.contact_force = np.zeros((3,), dtype=np.float64)  # Force due to contact
 
     def get_acc(self):
         """
         :return: The acceleration of the node
         """
-        return (self.corner_force + self.R)/self.mass
+        return (self.corner_force + self.contact_force)/self.mass
 
     @property
     def ref(self):
@@ -295,21 +295,31 @@ class Surface:
             self._set_reference_plane()
 
         sol = guess
+        acc_points = np.array([node.get_acc() for node in self.nodes])
+        as_ = node.get_acc()
 
         for i in range(max_iter):
             # noinspection PyTypeChecker
             A = self.construct_position_basis(sol[2])
-            f = get_f(sol, A, node.pos, node.vel, self.xi_p, self.eta_p)
+            xi, eta, del_t = sol
+            phi_k_arr = phi_p_2D(xi, eta, self.xi_p, self.eta_p)
+            rhs = A@phi_k_arr
+            lhs = node.pos + node.vel*del_t + 0.5*as_*del_t**2
+            F = rhs - lhs
 
-            if np.linalg.norm(f) <= tol:
+            if np.linalg.norm(F) <= tol:
                 break
 
-            # Partial A is the derivative of A with respect to del_t
-            partial_A = A.transpose() - self.points
-            partial_A = partial_A.transpose()/sol[2]
-            j = get_j(sol, A, self.xi_p, self.eta_p, partial_A, node.vel)
+            d_phi_d_xi = d_phi_p_2D_d_xi(eta, self.xi_p, self.eta_p)
+            d_phi_d_eta = d_phi_p_2D_d_eta(xi, self.xi_p, self.eta_p)
+            d_A_d_del_t = self.vel_points.transpose() + acc_points.transpose()*del_t
 
-            sol = sol - np.linalg.pinv(j)@f
+            J0 = A@d_phi_d_xi
+            J1 = A@d_phi_d_eta
+            J2 = d_A_d_del_t@phi_k_arr - node.vel - as_*del_t
+            J = np.column_stack((J0, J1, J2))
+
+            sol = sol - np.linalg.pinv(J)@F
 
         # noinspection PyUnboundLocalVariable
         return sol, i
@@ -332,10 +342,10 @@ class Surface:
 
         Fk = np.array([n.corner_force for n in self.nodes])
         mk = np.array([n.mass for n in self.nodes])
-        Rk = np.array([n.R for n in self.nodes])
+        Rk = np.array([n.contact_force for n in self.nodes])
         A_prime = self.points + self.vel_points*dt
         A_prime = A_prime.transpose() + (Fk + Rk).transpose()*dt**2/(2*mk)
-        Fs, Rs, ms = node.corner_force, node.R, node.mass
+        Fs, Rs, ms = node.corner_force, node.contact_force, node.mass
         vs, ps = node.vel, node.pos
 
         sol = guess
@@ -387,10 +397,10 @@ class Surface:
 
         Fk = np.array([n.corner_force for n in self.nodes])
         mk = np.array([n.mass for n in self.nodes])
-        Rk = np.array([n.R for n in self.nodes])
+        Rk = np.array([n.contact_force for n in self.nodes])
         A_prime = self.points + self.vel_points*dt
         A_prime = A_prime.transpose() + (Fk + Rk).transpose()*dt**2/(2*mk)
-        Fs, Rs, ms = node.corner_force, node.R, node.mass
+        Fs, Rs, ms = node.corner_force, node.contact_force, node.mass
         vs, ps = node.vel, node.pos
 
         sol = guess
@@ -535,7 +545,7 @@ class Surface:
         axes.plot(slave_path[:, 0], slave_path[:, 1], slave_path[:, 2], color='black', ls='--')
 
         if del_tc is not None:
-            contact_point = node.pos + del_tc*node.vel
+            contact_point = node.pos + del_tc*node.vel + 0.5*node.get_acc()*del_tc**2
             axes.scatter(contact_point[0], contact_point[1], contact_point[2], color='gold', marker='x')
 
         if del_tc is not None and any(self.vel_points.flatten()):
@@ -1064,34 +1074,6 @@ def d_phi_p_3D_d_eta(xi, zeta, xi_p, eta_p, zeta_p):
     The derivative of the shape function with respect to eta for a 3D linear hex element.
     """
     return 0.125*eta_p*(1 + xi*xi_p)*(1 + zeta*zeta_p)
-
-
-def get_f(ref, A, ps, ps_dot, xi_p, eta_p):
-    """
-    The function f for the Newton-Raphson scheme. A is the basis matrix as returned by Surface.construct_position_basis.
-    "p" is the slave node position.
-    """
-    xi, eta, del_t = ref
-    phi_p_arr = phi_p_2D(xi, eta, xi_p, eta_p)
-    rhs = A@phi_p_arr
-    lhs = ps + del_t*ps_dot
-    return rhs - lhs
-
-
-def get_j(ref, A, xi_p, eta_p, partial_A, ps_dot):
-    """
-    The Jacobian matrix for the Newton-Raphson scheme.
-    """
-    xi, eta, del_t = ref
-    phi_p_arr = phi_p_2D(xi, eta, xi_p, eta_p)
-    d_phi_p_xi_arr = d_phi_p_2D_d_xi(eta, xi_p, eta_p)
-    d_phi_p_eta_arr = d_phi_p_2D_d_eta(xi, xi_p, eta_p)
-
-    partial_xi = A@d_phi_p_xi_arr
-    partial_eta = A@d_phi_p_eta_arr
-    partial_del_t = partial_A@phi_p_arr - ps_dot
-
-    return np.array([partial_xi, partial_eta, partial_del_t]).transpose()
 
 
 def ref_to_physical(ref, A, xi_p, eta_p):

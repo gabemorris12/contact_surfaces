@@ -27,6 +27,7 @@ for node, ref_point in zip(nodes, ref_points):
 surf = Surface(0, nodes)
 
 slave = Node(4, np.array([0.25, 1, 0.2]), np.array([0.75, -1, 0]))
+# slave.corner_force = np.array([-1, 0.1, 0.4])
 
 fig, ax = plt.subplots(subplot_kw=dict(projection='3d', proj_type='ortho'))
 ax.set_title('Contact Detection')
@@ -61,17 +62,17 @@ ax2.set_zlabel('z')
 ax2.set_aspect('equal')
 ax2.view_init(azim=90, elev=0)
 
-slave.R = N*fc
+slave.contact_force = N*fc
 phi_k = phi_p_2D(xi, eta, surf.xi_p, surf.eta_p)
 for phi, node in zip(phi_k, surf.nodes):
-    node.R = -N*fc*phi
+    node.contact_force = -N*fc*phi
 
 surf.contact_visual_through_reference(ax2, slave, dt, None, only_contact=False)
 
 # clear the previous force
-slave.R = np.zeros(3, dtype=np.float64)
+slave.contact_force = np.zeros(3, dtype=np.float64)
 for node in surf.nodes:
-    node.R = np.zeros(3, dtype=np.float64)
+    node.contact_force = np.zeros(3, dtype=np.float64)
 
 glued_force_sol = surf.find_glue_force(slave, np.array([1, 1, 1]), dt, sol[2])
 print('Glue Force Solution:')
@@ -86,10 +87,10 @@ ax3.set_zlabel('z')
 ax3.set_aspect('equal')
 ax3.view_init(azim=90, elev=0)
 
-slave.R = G
+slave.contact_force = G
 phi_k = phi_p_2D(sol[2][0], sol[2][1], surf.xi_p, surf.eta_p)
 for phi, node in zip(phi_k, surf.nodes):
-    node.R = -G*phi
+    node.contact_force = -G*phi
 
 surf.contact_visual_through_reference(ax3, slave, dt, None, only_contact=False)
 
