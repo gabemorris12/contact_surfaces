@@ -333,7 +333,6 @@ class Surface:
         Fk = np.array([n.corner_force for n in self.nodes])
         mk = np.array([n.mass for n in self.nodes])
         Rk = np.array([n.R for n in self.nodes])
-        # A_prime = self.points + self.vel_points*dt + 0.5*dt**2*(Fk + Rk)/mk
         A_prime = self.points + self.vel_points*dt
         A_prime = A_prime.transpose() + (Fk + Rk).transpose()*dt**2/(2*mk)
         Fs, Rs, ms = node.corner_force, node.R, node.mass
@@ -362,6 +361,59 @@ class Surface:
             J0 = -A@d_phi_k_d_xi - d_A_d_xi@phi_k
             J1 = -A@d_phi_k_d_eta - d_A_d_eta@phi_k
             J2 = dt**2/(2*ms)*N - d_A_d_fc@phi_k
+            J = np.column_stack((J0, J1, J2))
+
+            sol = sol - np.linalg.inv(J)@F
+
+        # noinspection PyUnboundLocalVariable
+        return sol, i
+
+    def find_glue_force(self, node: Node, guess: np.ndarray, dt: float, ref: np.ndarray, tol=1e-12, max_iter=30):
+        """
+        Find the contact force increment for the current time step so that the node will hit at the reference point
+        "ref".
+
+        :param node: Node; The slave node object.
+        :param guess: np.array; The initial guess for the Newton-Raphson scheme (Gx, Gy, Gz). This is the glue force.
+        :param dt: float; The current time step in the analysis.
+        :param ref: np.array; The reference point (xi, eta) where the node will hit.
+        :param tol: float; The tolerance for the Newton-Raphson scheme.
+        :param max_iter: int; The maximum number of iterations for the Newton-Raphson scheme.
+        :return: tuple; The solution (Gx, Gy, Gz) and the number of iterations.
+        """
+
+        if self.ref_plane is None:
+            self._set_reference_plane()
+
+        Fk = np.array([n.corner_force for n in self.nodes])
+        mk = np.array([n.mass for n in self.nodes])
+        Rk = np.array([n.R for n in self.nodes])
+        A_prime = self.points + self.vel_points*dt
+        A_prime = A_prime.transpose() + (Fk + Rk).transpose()*dt**2/(2*mk)
+        Fs, Rs, ms = node.corner_force, node.R, node.mass
+        vs, ps = node.vel, node.pos
+
+        sol = guess
+        xi, eta = ref
+        phi_k = phi_p_2D(xi, eta, self.xi_p, self.eta_p)
+
+        for i in range(max_iter):
+            A = A_prime - np.outer(sol, phi_k*dt**2/(2*mk))
+
+            # Compute F
+            F = dt**2/(2*ms)*(Fs + sol + Rs) + dt*vs + ps - A@phi_k
+
+            if np.linalg.norm(F) <= tol:
+                break
+
+            # Compute J
+            d_A_d_Gx = np.outer(-np.array([1, 0, 0]), phi_k*dt**2/(2*mk))
+            d_A_d_Gy = np.outer(-np.array([0, 1, 0]), phi_k*dt**2/(2*mk))
+            d_A_d_Gz = np.outer(-np.array([0, 0, 1]), phi_k*dt**2/(2*mk))
+
+            J0 = -d_A_d_Gx@phi_k + np.array([dt**2/(2*ms), 0, 0])
+            J1 = -d_A_d_Gy@phi_k + np.array([0, dt**2/(2*ms), 0])
+            J2 = -d_A_d_Gz@phi_k + np.array([0, 0, dt**2/(2*ms)])
             J = np.column_stack((J0, J1, J2))
 
             sol = sol - np.linalg.inv(J)@F
