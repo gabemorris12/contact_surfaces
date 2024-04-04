@@ -461,29 +461,36 @@ class Surface:
                  time step. Additionally, it returns the time until contact del_tc (if it's between 0 and dt), the
                  reference contact point (xi, eta), and the number of iterations for the solution.
         """
-        k = 0
-        guesses = (
-            (0.5, 0.5, dt/2),
-            (-0.5, 0.5, dt/2),
-            (-0.5, -0.5, dt/2),
-            (0.5, -0.5, dt/2)
-        )
-        del_tc_vals, ref_vals = [], []
-        for guess in guesses:
-            sol = self.get_contact_point(node, np.array(guess), tol, max_iter=max_iter)
-            ref = sol[0][:2]
-            del_tc = sol[0][2]
-            k += sol[1]
 
-            if all(np.logical_and(ref >= -1 - tol, ref <= 1 + tol)) and 0 - tol <= del_tc <= dt + tol and \
-                    sol[1] <= max_iter - 2:
-                del_tc = 0 if 0 - tol <= del_tc <= 0 + tol else del_tc
-                del_tc = dt if dt - tol <= del_tc <= dt + tol else del_tc
-                return True, del_tc, ref, k
-            else:
-                del_tc_vals.append(del_tc)
-                ref_vals.append(ref)
-        return False, del_tc_vals, ref_vals, k
+        if self.ref_plane is None:
+            self._set_reference_plane()
+
+        # Compute centroid and slave at dt/2
+        later_points = self.points + self.vel_points*dt/2 + 0.5*np.array([n.get_acc() for n in self.nodes])*(dt/2)**2
+        centroid = np.mean(later_points, axis=0)
+        slave_later = node.pos + node.vel*dt/2 + 0.5*node.get_acc()*(dt/2)**2
+
+        # Construct the basis vectors
+        A = self.construct_position_basis(dt/2)
+        b1 = ref_to_physical((1, 0), A, self.xi_p, self.eta_p) - centroid
+        b1 = b1/np.linalg.norm(b1)
+        b2 = ref_to_physical((0, 1), A, self.xi_p, self.eta_p) - centroid
+        b2 = b2/np.linalg.norm(b2)
+        v = slave_later - centroid
+        v = v/np.linalg.norm(v)
+        A = np.array([b1, b2])
+        xi_guess, eta_guess = A@v
+
+        sol = self.get_contact_point(node, np.array([xi_guess, eta_guess, dt/2]), tol, max_iter=max_iter)
+        ref = sol[0][:2]
+        del_tc = sol[0][2]
+        k = sol[1]
+
+        if all(np.logical_and(ref >= -1 - tol, ref <= 1 + tol)) and 0 - tol <= del_tc <= dt + tol and k <= max_iter - 2:
+            del_tc = 0 if 0 - tol <= del_tc <= 0 + tol else del_tc
+            del_tc = dt if dt - tol <= del_tc <= dt + tol else del_tc
+            return True, del_tc, ref, k
+        return False, del_tc, ref, k
 
     def contact_visual(self, axes: Axes3D, node: Node, dt: float, del_tc: float):
         """
@@ -1105,7 +1112,7 @@ def ref_to_physical(ref, A, xi_p, eta_p):
     """
     Map the reference coordinates defined by "ref" to the physical coordinates.
 
-    :param ref: np.array; The (xi, eta, zeta) coordinates.
+    :param ref: np.array; The (xi, eta) coordinates.
     :param A: np.array; The basis matrix as returned by Surface.construct_position_basis.
     :param xi_p: np.array; The xi coordinates of the nodes that define the surface.
     :param eta_p: np.array; The eta coordinates of the nodes that define the surface.
