@@ -117,7 +117,7 @@ class TestContact(unittest.TestCase):
 
     def test_capture_box(self):
         right = (0.5000011, 1.00055, 1.0000011, -1.1e-06, 0.99945, 0.4999988999999999)
-        self.assertEqual(TestContact.test_surf.capture_box(1, 500, 1, 1.1e-6), right)
+        self.assertEqual(TestContact.test_surf.capture_box(1, 500, 1, 0, 0, 0, 1.1e-6), right)
 
     def test_outify_surfaces(self):
         element = TestContact.global_mesh.elements[1]

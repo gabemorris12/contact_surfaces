@@ -215,7 +215,7 @@ class Surface:
 
         return p.transpose()
 
-    def capture_box(self, vx_max, vy_max, vz_max, dt):
+    def capture_box(self, vx_max, vy_max, vz_max, ax_max, ay_max, az_max, dt):
         """
         The capture box is used to determine which buckets penetrate the surface. The nodes in these buckets are
         considered for contact. The capture box is constructed based off the future position of the surface in the next
@@ -226,16 +226,16 @@ class Surface:
         :param vx_max: float; The max velocity in the x direction.
         :param vy_max: float; The max velocity in the y direction.
         :param vz_max: float; The max velocity in the z direction.
+        :param ax_max: float; The max acceleration in the x direction.
+        :param ay_max: float; The max acceleration in the y direction.
+        :param az_max: float; The max acceleration in the z direction.
         :param dt: float; The time step of the analysis.
         :return: tuple; The bounding box parameters - xc_max, yc_max, zc_max, xc_min, yc_min, and zc_min.
         """
-        # added = [node.pos + dt*node.vel for node in self.nodes]
-        # subtracted = [node.pos - dt*node.vel for node in self.nodes]
-        # added = [node.pos + dt*max(abs(node.vel)) for node in self.nodes]
-        # subtracted = [node.pos - dt*max(abs(node.vel)) for node in self.nodes]
         vels = np.full(self.points.shape, np.float64([vx_max, vy_max, vz_max]))
-        added = self.points + dt*vels
-        subtracted = self.points - dt*vels
+        accs = np.full(self.points.shape, np.float64([ax_max, ay_max, az_max]))
+        added = self.points + dt*vels + 0.5*accs*dt**2
+        subtracted = self.points - dt*vels - 0.5*accs*dt**2
         bounds = np.concatenate((added, subtracted))
 
         xc_max, yc_max, zc_max = np.amax(bounds, axis=0)
@@ -782,15 +782,20 @@ class GlobalMesh:
         self.surface_count = np.concatenate([mesh.surface_count for mesh in self.mesh_bodies])
         self.points = np.concatenate([mesh.points for mesh in self.mesh_bodies])
         self.velocities = np.array([node.vel for node in self.nodes])
+        self.accelerations = np.array([node.get_acc() for node in self.nodes])
 
         self.bs = bs
 
         vels = np.amax(np.abs(self.velocities), axis=0)
+        accs = np.amax(np.abs(self.accelerations), axis=0)
         for i, vel in enumerate(vels):
             if vel == 0:
+                # When I get this into fierro, consider choosing a velocity that results in a distance that is half the
+                # bucket size. I need access to the time step, which is not available here.
                 vels[i] = 1
 
         self.vx_max, self.vy_max, self.vz_max = vels
+        self.ax_max, self.ay_max, self.az_max = accs
 
         e_start = len(self.mesh_bodies[0].elements)
         s_start = len(self.mesh_bodies[0].surfaces)
@@ -878,11 +883,12 @@ class GlobalMesh:
         :param dt: float; The time step.
         :return: tuple; A list of bucket ids and a list of node ids in each bucket.
         """
-        surf = self.surfaces[surface_id]
+        surf: Surface = self.surfaces[surface_id]
 
         # Construct capture box.
         (xc_max, yc_max, zc_max,
-         xc_min, yc_min, zc_min) = surf.capture_box(self.vx_max, self.vy_max, self.vz_max, dt)
+         xc_min, yc_min, zc_min) = surf.capture_box(self.vx_max, self.vy_max, self.vz_max, self.ax_max, self.ay_max,
+                                                    self.az_max, dt)
 
         # Determine the buckets that intersect with the capture box.
         ibox_min = min(self.Sx, int((xc_min - self.x_min)/self.bs))
