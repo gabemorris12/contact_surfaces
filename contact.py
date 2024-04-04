@@ -5,6 +5,15 @@ import matplotlib.tri as tri
 from matplotlib.patches import FancyArrowPatch
 from mpl_toolkits.mplot3d import proj3d
 
+import logging
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+stream_handler = logging.StreamHandler()
+formatter = logging.Formatter('%(levelname)s:%(message)s')
+stream_handler.setFormatter(formatter)
+logger.addHandler(stream_handler)
+
 
 class MeshBody:
     def __init__(self, points: np.ndarray, cells_dict: dict, velocity=np.float64([0, 0, 0])):
@@ -319,7 +328,12 @@ class Surface:
             J2 = d_A_d_del_t@phi_k_arr - node.vel - as_*del_t
             J = np.column_stack((J0, J1, J2))
 
-            sol = sol - np.linalg.pinv(J)@F
+            if 0 - tol <= np.linalg.det(J) <= 0 + tol:
+                logger.debug(f'Singularity calculated in contact check between patch {self.label} and '
+                             f'node {node.label}. Backing out.')
+                return sol, max_iter - 1
+
+            sol = sol - np.linalg.inv(J)@F
 
         # noinspection PyUnboundLocalVariable
         return sol, i
@@ -462,7 +476,7 @@ class Surface:
             k += sol[1]
 
             if all(np.logical_and(ref >= -1 - tol, ref <= 1 + tol)) and 0 - tol <= del_tc <= dt + tol and \
-                    sol[1] <= max_iter:
+                    sol[1] <= max_iter - 2:
                 del_tc = 0 if 0 - tol <= del_tc <= 0 + tol else del_tc
                 del_tc = dt if dt - tol <= del_tc <= dt + tol else del_tc
                 return True, del_tc, ref, k
@@ -746,11 +760,14 @@ class Element:
 
 
 class GlobalMesh:
-    def __init__(self, *MeshBodies, bs=0.1):
+    def __init__(self, *MeshBodies, bs=0.1, master_patches=None):
         """
         :param MeshBodies: MeshBody; The mesh body objects that make up the global contact check.
         :param bs: float; The bucket size of the mesh. This should be determined from the smallest master surface
                    dimension.
+        :param master_patches: list; A list of integers corresponding to master patch IDs that are used for the contact
+                               analysis. No nodes will be able to penetrate these patches. If this is None, then all the
+                               external surfaces will be considered.
 
         Additional Instance Variables
         -----------------------------
@@ -829,6 +846,8 @@ class GlobalMesh:
         self.n, _ = self.points.shape
 
         self.nbox, self.lbox, self.npoint, self.nsort = None, None, None, None
+
+        self.master_patches = master_patches if master_patches else np.where(self.surface_count == 1)[0]
 
         self.sort()
 
