@@ -445,6 +445,29 @@ class Surface:
         # noinspection PyUnboundLocalVariable
         return sol, i
 
+    def normal_increment(self, nodes: list[Node], guesses: list[tuple], normals: list[np.ndarray], dt: float):
+        """
+        Find and store the normal force increment for each node. This just does one iteration through all nodes.
+
+        :param nodes: list; The list of node objects.
+        :param guesses: list; The list of initial guesses (xi, eta, fc) corresponding to each node.
+        :param normals: list; The list of normal vectors corresponding to each node. This is the direction that the
+                        force increment will be applied.
+        :param dt: float; The current time step in the analysis.
+        """
+        sols = []
+        for node, guess, N in zip(nodes, guesses, normals):
+            (xi, eta, fc), _ = self.find_fc(node, guess, dt, N)
+            phi_k_arr = phi_p_2D(xi, eta, self.xi_p, self.eta_p)
+            node.contact_force += N*fc
+
+            for patch_node, phi_k in zip(self.nodes, phi_k_arr):
+                patch_node.contact_force += -N*fc*phi_k
+
+            sols.append((xi, eta, fc))
+
+        return sols
+
     def contact_check_through_reference(self, node: Node, dt: float, tol=1e-12, max_iter=30):
         """
         This procedure finds the reference point and the delta_tc all at once using a Newton-Raphson scheme. If all the

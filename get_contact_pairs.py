@@ -6,8 +6,8 @@ import logging
 logger = logging.getLogger('contact')
 logger.setLevel(logging.INFO)
 
-# master_patches = [27, 23, 32, 35]
-master_patches = None
+master_patches = [27, 23, 32, 35]
+# master_patches = None
 dt = 1.1e-6
 
 mesh_data1 = meshio.read(r'Meshes/Block.msh')

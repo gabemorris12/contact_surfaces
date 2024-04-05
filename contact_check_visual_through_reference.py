@@ -38,6 +38,7 @@ ax.set_aspect('equal')
 ax.view_init(azim=45, elev=25)
 
 sol = surf.contact_check_through_reference(slave, dt)
+_, _, (xi, eta), _ = sol
 print('Contact Detection Solution:')
 print(sol, end='\n\n')
 
@@ -49,8 +50,9 @@ else:
 surf.contact_visual_through_reference(ax, slave, dt, del_tc, only_contact=False)
 
 N = surf.get_normal(sol[2], del_tc)
-force_sol = surf.find_fc(slave, np.array([sol[2][0], sol[2][1], 2.3]), dt, N)
+force_sol = surf.find_fc(slave, np.array([xi, eta, 1]), dt, N)
 print('\nForce Solution:')
+print(surf.normal_increment([slave], [(xi, eta, 1)], [N], dt))
 print(force_sol, end='\n\n')
 xi, eta, fc = force_sol[0]
 
@@ -62,10 +64,10 @@ ax2.set_zlabel('z')
 ax2.set_aspect('equal')
 ax2.view_init(azim=45, elev=25)
 
-slave.contact_force = N*fc
-phi_k = phi_p_2D(xi, eta, surf.xi_p, surf.eta_p)
-for phi, node in zip(phi_k, surf.nodes):
-    node.contact_force = -N*fc*phi
+# slave.contact_force = N*fc
+# phi_k = phi_p_2D(xi, eta, surf.xi_p, surf.eta_p)
+# for phi, node in zip(phi_k, surf.nodes):
+#     node.contact_force = -N*fc*phi
 
 surf.contact_visual_through_reference(ax2, slave, dt, None, only_contact=False)
 
