@@ -35,7 +35,7 @@ ax.set_xlabel('x')
 ax.set_ylabel('y')
 ax.set_zlabel('z')
 ax.set_aspect('equal')
-ax.view_init(azim=90, elev=0)
+ax.view_init(azim=45, elev=25)
 
 sol = surf.contact_check_through_reference(slave, dt)
 print('Contact Detection Solution:')
@@ -60,7 +60,7 @@ ax2.set_xlabel('x')
 ax2.set_ylabel('y')
 ax2.set_zlabel('z')
 ax2.set_aspect('equal')
-ax2.view_init(azim=90, elev=0)
+ax2.view_init(azim=45, elev=25)
 
 slave.contact_force = N*fc
 phi_k = phi_p_2D(xi, eta, surf.xi_p, surf.eta_p)
@@ -85,7 +85,7 @@ ax3.set_xlabel('x')
 ax3.set_ylabel('y')
 ax3.set_zlabel('z')
 ax3.set_aspect('equal')
-ax3.view_init(azim=90, elev=0)
+ax3.view_init(azim=45, elev=25)
 
 slave.contact_force = G
 phi_k = phi_p_2D(sol[2][0], sol[2][1], surf.xi_p, surf.eta_p)
