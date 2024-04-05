@@ -1,9 +1,13 @@
 import unittest
+import logging
 
 import meshio
 import numpy as np
 
 from contact import MeshBody, GlobalMesh, Node, Surface
+
+logger = logging.getLogger('contact')
+logger.setLevel(logging.INFO)
 
 
 class TestContact(unittest.TestCase):
@@ -265,6 +269,21 @@ class TestContact(unittest.TestCase):
         n = surf.get_normal(sol[2], sol[1])
         np.testing.assert_array_almost_equal(n, np.array([-0.36246426756409533, 0.8567492881880666,
                                                           0.36687915166777346]), 12)
+
+    def test_get_contact_pairs(self):
+        logger.setLevel(logging.WARNING)
+        contact_pairs = TestContact.global_mesh.get_contact_pairs(TestContact.dt1)
+        self.assertListEqual(contact_pairs, [
+            (23, 27, (-1.0, -1.0, 0), 1),
+            (23, 35, (0.9999999999999996, -1.0, 0), 1),
+            (23, 39, (-1.0, 0.9999999999999998, 0), 1),
+            (23, 48, (1.0, 1.0, 0), 1),
+            (27, 31, (-1.0, 1.0, 0), 1),
+            (27, 41, (0.9999999999999994, 0.9999999999999998, 0), 1),
+            (32, 28, (1.0, -1.0, 0), 1),
+            (32, 40, (0.9999999999999996, 0.9999999999999996, 0), 1),
+            (35, 32, (0.9999999999999996, 1.0, 0), 1)
+        ])
 
 
 if __name__ == '__main__':

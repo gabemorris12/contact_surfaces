@@ -8,7 +8,7 @@ from mpl_toolkits.mplot3d import proj3d
 import logging
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.WARNING)
 stream_handler = logging.StreamHandler()
 formatter = logging.Formatter('%(levelname)s:%(message)s')
 stream_handler.setFormatter(formatter)
@@ -329,8 +329,8 @@ class Surface:
             J = np.column_stack((J0, J1, J2))
 
             if 0 - tol <= np.linalg.det(J) <= 0 + tol:
-                logger.debug(f'Singularity calculated in contact check between patch {self.label} and '
-                             f'node {node.label}. Backing out.')
+                logger.info(f'Singularity calculated in contact check between patch {self.label} and '
+                            f'node {node.label}. Backing out.')
                 return sol, max_iter - 1
 
             sol = sol - np.linalg.inv(J)@F
@@ -840,7 +840,8 @@ class GlobalMesh:
         # Extending the get_element_by_surf dictionary
         self.get_element_by_surf = dict()
         for mesh in self.mesh_bodies:
-            self.get_element_by_surf.update(mesh.get_element_by_surf)
+            for surface, elements in mesh.get_element_by_surf.items():
+                self.get_element_by_surf[surface] = elements
 
         self.x_max, self.y_max, self.z_max = None, None, None
         self.x_min, self.y_min, self.z_min = None, None, None
@@ -964,7 +965,7 @@ class GlobalMesh:
         # noinspection PyUnresolvedReferences
         return surf.contact_check(self.nodes[node_id], dt, tol)
 
-    def contact_check_through_reference(self, surface_id: int, node_id: int, dt: float, tol=1e-12):
+    def contact_check_through_reference(self, surface_id: int, node_id: int, dt: float, tol=1e-12, max_iter=30):
         """
         This procedure finds the reference point and the delta_tc all at once using a Newton-Raphson scheme. If all the
         reference points are between -1 and 1 and the delta_tc is between 0 and dt, then the node will pass through the
@@ -976,13 +977,40 @@ class GlobalMesh:
         :param tol: float; The tolerance of the edge cases. For the end cases where either reference coordinate is
                     either 1 or -1, the tolerance will adjust for floating point error, ensuring that the edge case is
                     met.
+        :param max_iter: int; The maximum number of iterations for the Newton-Raphson scheme.
         :return: tuple; Returns True or False indicating that the node will pass through the surface within the next
                  time step. Additionally, it returns the time until contact del_tc (if it's between 0 and dt), the
                  reference contact point (xi, eta), and the number of iterations for the solution.
         """
         surf = self.surfaces[surface_id]  # See contact_check from class surface.
         # noinspection PyUnresolvedReferences
-        return surf.contact_check_through_reference(self.nodes[node_id], dt, tol)
+        return surf.contact_check_through_reference(self.nodes[node_id], dt, tol=tol, max_iter=max_iter)
+
+    def get_contact_pairs(self, dt: float, tol=1e-12, max_iter=30):
+        """
+        Get the contact pairs for the current time step.
+
+        :param dt: float; The current time step.
+        :param tol: float; The tolerance for the contact check.
+        :param max_iter: int; The maximum number of iterations for the Newton-Raphson scheme.
+        :return: list; A list of tuples where each tuple consists of (surface_id, node_id, (xi, eta, del_tc), iters).
+        """
+        all_nodes = []
+        contact_pairs = []
+        for patch in self.master_patches:
+            elem = self.get_element_by_surf[self.surfaces[patch]]
+            assert len(elem) == 1, 'Master patches should only have one element.'
+            elem[0].set_node_refs()
+
+            _, possible_nodes = self.find_nodes(patch, dt)
+            for node in possible_nodes:
+                is_hitting, del_tc, (xi, eta), k = self.contact_check_through_reference(patch, node, dt, tol=tol,
+                                                                                        max_iter=max_iter)
+                if is_hitting and node not in all_nodes:
+                    all_nodes.append(node)
+                    all_nodes.extend([node.label for node in self.surfaces[patch].nodes])
+                    contact_pairs.append((patch, node, (xi, eta, del_tc), k))
+        return contact_pairs
 
 
 def find_time(patch_nodes: list[Node], slave_node: Node, dt: float) -> float:
