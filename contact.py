@@ -445,7 +445,8 @@ class Surface:
         # noinspection PyUnboundLocalVariable
         return sol, i
 
-    def normal_increment(self, nodes: list[Node], guesses: list[tuple], normals: list[np.ndarray], dt: float):
+    def normal_increment(self, nodes: list[Node], guesses: list[tuple], normals: list[np.ndarray], dt: float, tol=1e-12,
+                         max_iter=30):
         """
         Find and store the normal force increment for each node. This just does one iteration through all nodes.
 
@@ -454,15 +455,22 @@ class Surface:
         :param normals: list; The list of normal vectors corresponding to each node. This is the direction that the
                         force increment will be applied.
         :param dt: float; The current time step in the analysis.
+        :param tol: float; The tolerance for the Newton-Raphson scheme.
+        :param max_iter: int; The maximum number of iterations for the Newton-Raphson scheme.
+        :return: list; A list of solutions (xi, eta, fc) for each node.
         """
         sols = []
         for node, guess, N in zip(nodes, guesses, normals):
-            (xi, eta, fc), _ = self.find_fc(node, guess, dt, N)
+            (xi, eta, fc), _ = self.find_fc(node, guess, dt, N, tol=tol, max_iter=max_iter)
             phi_k_arr = phi_p_2D(xi, eta, self.xi_p, self.eta_p)
             node.contact_force += N*fc
 
-            for patch_node, phi_k in zip(self.nodes, phi_k_arr):
-                patch_node.contact_force += -N*fc*phi_k
+            if np.dot(N, node.contact_force) < 0:
+                # Tensile behavior doesn't need to be obeyed
+                node.contact_force = np.zeros((3,), dtype=np.float64)
+            else:
+                for patch_node, phi_k in zip(self.nodes, phi_k_arr):
+                    patch_node.contact_force += -N*fc*phi_k
 
             sols.append((xi, eta, fc))
 
@@ -555,15 +563,16 @@ class Surface:
             contact = node.pos + node.vel*del_tc
             axes.scatter([contact[0]], [contact[1]], [contact[2]], color='firebrick', marker='x')
 
-    def contact_visual_through_reference(self, axes: Axes3D, node: Node, dt: float, del_tc: float | None,
-                                         only_contact=False, penetration=True, **kwargs):
+    def contact_visual_through_reference(self, axes: Axes3D, nodes: Node | list[Node], dt: float,
+                                         del_tc: float | None | list[float], only_contact=False, penetration=True,
+                                         **kwargs):
         """
         Generates a 3D plot of the contact check for visual confirmation.
 
         :param axes: Axes3D; A 3D axes object to generate the plot on.
-        :param node: Node; The slave node object that is being tested.
+        :param nodes: Node or list of Nodes; The slave node objects that are being tested.
         :param dt: float; The current time step in the analysis.
-        :param del_tc: float; The delta time to contact.
+        :param del_tc: float or list of floats; The delta time to contact corresponding to the Nodes list.
         :param only_contact: bool; Whether to only plot the contact point and surface.
         :param penetration: bool; Whether to plot the penetration components.
         """
@@ -577,41 +586,52 @@ class Surface:
             self.project_surface(axes, dt, color='navy', **kwargs)
 
         # Plot the node
-        axes.scatter(node.pos[0], node.pos[1], node.pos[2], color='lime')
-        slave_later = node.pos + dt*node.vel + 0.5*node.get_acc()*dt**2
-        axes.scatter(slave_later[0], slave_later[1], slave_later[2], color='orangered', marker="^")
-        # Discretize the line
-        t_values = np.linspace(0, dt, 50)
-        slave_path = []
-        for t in t_values:
-            slave_path.append(node.pos + node.vel*t + 0.5*node.get_acc()*t**2)
-        slave_path = np.array(slave_path)
-        axes.plot(slave_path[:, 0], slave_path[:, 1], slave_path[:, 2], color='black', ls='--')
+        if isinstance(nodes, Node):
+            nodes = [nodes]
+            del_tc = [del_tc] if del_tc is not None else None
+        else:
+            assert isinstance(del_tc, list) or del_tc is None, 'List of del_tc not given despite list of nodes given.'
+        for node in nodes:
+            axes.scatter(node.pos[0], node.pos[1], node.pos[2], color='lime')
+            slave_later = node.pos + dt*node.vel + 0.5*node.get_acc()*dt**2
+            axes.scatter(slave_later[0], slave_later[1], slave_later[2], color='orangered', marker="^")
+            # Discretize the line
+            t_values = np.linspace(0, dt, 50)
+            slave_path = []
+            for t in t_values:
+                slave_path.append(node.pos + node.vel*t + 0.5*node.get_acc()*t**2)
+            slave_path = np.array(slave_path)
+            axes.plot(slave_path[:, 0], slave_path[:, 1], slave_path[:, 2], color='black', ls='--')
 
         if del_tc is not None:
-            contact_point = node.pos + del_tc*node.vel + 0.5*node.get_acc()*del_tc**2
-            axes.scatter(contact_point[0], contact_point[1], contact_point[2], color='gold', marker='x')
+            for del_t, node in zip(del_tc, nodes):
+                contact_point = node.pos + del_t*node.vel + 0.5*node.get_acc()*del_t**2
+                axes.scatter(contact_point[0], contact_point[1], contact_point[2], color='gold', marker='x')
 
         if del_tc is not None and any(self.vel_points.flatten()):
-            self.project_surface(axes, del_tc, color='firebrick', **kwargs)
+            for del_t in del_tc:
+                self.project_surface(axes, del_t, color='firebrick', **kwargs)
 
         if penetration and del_tc is not None:
-            ref, _ = self.get_contact_point(node, np.array([0.5, 0.5, del_tc]))
-            n = self.get_normal(ref[:2], del_tc)
-            print(f'Normal: {n} at {ref[:2]}')
+            for del_t, node in zip(del_tc, nodes):
+                slave_later = node.pos + dt*node.vel + 0.5*node.get_acc()*dt**2
+                contact_point = node.pos + del_t*node.vel + 0.5*node.get_acc()*del_t**2
+                ref, _ = self.get_contact_point(node, np.array([0.5, 0.5, del_t]))
+                n = self.get_normal(ref[:2], del_t)
+                print(f'Normal: {n} at {ref[:2]}')
 
-            # noinspection PyUnboundLocalVariable
-            p_vec = slave_later - contact_point  # Penetration vector
-            p = np.dot(p_vec, n)*n  # Penetration projection
-            normal_tip = contact_point + n*np.linalg.norm(p)  # Tip of the normal vector
-            # penetration_depth = contact_point + p  # The endpoint of the penetration depth
-            arrow_points = np.array([contact_point, normal_tip])
-            # penetration_points = np.array([contact_point, penetration_depth, slave_later])
-            arrow_prop_dict = dict(mutation_scale=20, arrowstyle='-|>', color='k', shrinkA=0, shrinkB=0)
-            a = Arrow3D(arrow_points[:, 0], arrow_points[:, 1], arrow_points[:, 2], **arrow_prop_dict)
-            axes.add_artist(a)
-            # Don't need this for right now.
-            # axes.plot(penetration_points[:, 0], penetration_points[:, 1], penetration_points[:, 2], 'k--')
+                # noinspection PyUnboundLocalVariable
+                p_vec = slave_later - contact_point  # Penetration vector
+                p = np.dot(p_vec, n)*n  # Penetration projection
+                normal_tip = contact_point + n*np.linalg.norm(p)  # Tip of the normal vector
+                # penetration_depth = contact_point + p  # The endpoint of the penetration depth
+                arrow_points = np.array([contact_point, normal_tip])
+                # penetration_points = np.array([contact_point, penetration_depth, slave_later])
+                arrow_prop_dict = dict(mutation_scale=20, arrowstyle='-|>', color='k', shrinkA=0, shrinkB=0)
+                a = Arrow3D(arrow_points[:, 0], arrow_points[:, 1], arrow_points[:, 2], **arrow_prop_dict)
+                axes.add_artist(a)
+                # Don't need this for right now.
+                # axes.plot(penetration_points[:, 0], penetration_points[:, 1], penetration_points[:, 2], 'k--')
 
     def project_surface(self, axes: Axes3D, del_t: float, N=9, alpha=0.25, color='navy', show_grid=False,
                         triangulate=False):
