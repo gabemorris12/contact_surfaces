@@ -19,18 +19,7 @@ slaves = [
     # Node(6, np.array([0, 0.5, 1]), np.array([0, 0, -0.25]))  # Tensile Behavior
 ]
 
-ref_points = [
-    [-1, -1, 1],
-    [1, -1, 1],
-    [1, 1, 1],
-    [-1, 1, 1]
-]
-
-for node, ref_point in zip(patch_nodes, ref_points):
-    node.ref = ref_point
-
 surf = Surface(0, patch_nodes)
-surf._set_reference_plane()
 
 check_sol = [surf.contact_check_through_reference(slave, dt) for slave in slaves]
 print('Contact Detection Solution:')

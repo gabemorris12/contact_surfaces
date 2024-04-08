@@ -174,18 +174,19 @@ class TestContact(unittest.TestCase):
         ]))
 
     def test_get_contact_point(self):
-        ref_points = np.array([
-            [1, 1, -1],
-            [-1, 1, -1],
-            [-1, 1, 1],
-            [1, 1, 1]
-        ])
-        for i, node in enumerate(TestContact.random_surf.nodes):
-            node.ref = ref_points[i]
+        # Deprecating this behavior
+        # ref_points = np.array([
+        #     [1, 1, -1],
+        #     [-1, 1, -1],
+        #     [-1, 1, 1],
+        #     [1, 1, 1]
+        # ])
+        # for i, node in enumerate(TestContact.random_surf.nodes):
+        #     node.ref = ref_points[i]
 
         slave = Node(4, np.array([0.75, 0.75, 1]), np.array([2, -0.1, 10.5]))
         contact_point, _ = TestContact.random_surf.get_contact_point(slave, np.array([0.5, -0.5, 0.05]))
-        np.testing.assert_array_almost_equal(contact_point, np.array([0.41631963, 0.34774981, 0.08798188]), 8)
+        np.testing.assert_array_almost_equal(contact_point, np.array([-0.41631963, 0.34774981, 0.08798188]), 8)
 
     def test_contact_check(self):
         nodes = [31, 39, 41, 48]
@@ -246,16 +247,6 @@ class TestContact(unittest.TestCase):
             Node(2, np.array([0, 0, 1]), np.array([0, 0.2, 0])),
             Node(3, np.array([1, 0, 1]), np.array([0, 0, 0]))
         ]
-
-        ref_points = [
-            [-1, 1, -1],
-            [1, 1, -1],
-            [1, 1, 1],
-            [-1, 1, 1]
-        ]
-
-        for node, ref_point in zip(nodes, ref_points):
-            node.ref = ref_point
 
         surf = Surface(0, nodes)
 

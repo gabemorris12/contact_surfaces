@@ -181,7 +181,8 @@ class Surface:
         self.dir = np.cross(vecs[0], vecs[1])
         self.ref_plane = None
 
-        self.xi_p, self.eta_p = None, None
+        # Assume that the order of the nodes are always pointing outward
+        self.xi_p, self.eta_p = np.array([-1, 1, 1, -1], dtype=np.float64), np.array([-1, -1, 1, 1], dtype=np.float64)
 
     def reverse_dir(self):
         """
@@ -193,11 +194,11 @@ class Surface:
         self.vel_points = np.array([node.vel for node in self.nodes])
         self.dir = -self.dir
 
-        if self.xi_p is not None and self.eta_p is not None:
-            ref = np.array([node.ref for node in self.nodes])
-            index = np.arange(3)
-            ref = ref[:, index != self.ref_plane[0]]
-            self.xi_p, self.eta_p = ref[:, 0], ref[:, 1]
+        # if self.xi_p is not None and self.eta_p is not None:
+        #     ref = np.array([node.ref for node in self.nodes])
+        #     index = np.arange(3)
+        #     ref = ref[:, index != self.ref_plane[0]]
+        #     self.xi_p, self.eta_p = ref[:, 0], ref[:, 1]
 
     def construct_position_basis(self, del_t=0.0):
         """
@@ -300,8 +301,8 @@ class Surface:
                         iterations.
         """
 
-        if self.ref_plane is None:
-            self._set_reference_plane()
+        # if self.ref_plane is None:
+        #     self._set_reference_plane()
 
         sol = guess
         acc_points = np.array([node.get_acc() for node in self.nodes])
@@ -351,8 +352,8 @@ class Surface:
         :return: tuple; The solution (xi, eta, fc) and the number of iterations.
         """
 
-        if self.ref_plane is None:
-            self._set_reference_plane()
+        # if self.ref_plane is None:
+        #     self._set_reference_plane()
 
         Fk = np.array([n.corner_force for n in self.nodes])
         mk = np.array([n.mass for n in self.nodes])
@@ -406,8 +407,8 @@ class Surface:
         :return: tuple; The solution (Gx, Gy, Gz) and the number of iterations.
         """
 
-        if self.ref_plane is None:
-            self._set_reference_plane()
+        # if self.ref_plane is None:
+        #     self._set_reference_plane()
 
         Fk = np.array([n.corner_force for n in self.nodes])
         mk = np.array([n.mass for n in self.nodes])
@@ -493,8 +494,8 @@ class Surface:
                  reference contact point (xi, eta), and the number of iterations for the solution.
         """
 
-        if self.ref_plane is None:
-            self._set_reference_plane()
+        # if self.ref_plane is None:
+        #     self._set_reference_plane()
 
         # Compute centroid and slave at dt/2
         later_points = self.points + self.vel_points*dt/2 + 0.5*np.array([n.get_acc() for n in self.nodes])*(dt/2)**2
@@ -646,8 +647,8 @@ class Surface:
         :param show_grid: bool; Whether to show the grid of the surface.
         :param triangulate: bool; Whether to use the triangulate method to generate a mesh.
         """
-        if self.ref_plane is None:
-            self._set_reference_plane()
+        # if self.ref_plane is None:
+        #     self._set_reference_plane()
 
         A = self.construct_position_basis(del_t=del_t)
         xp, yp, zp = [], [], []
@@ -709,17 +710,35 @@ class Surface:
         cross = np.cross(dr_dxi, dr_deta)
         return cross/np.linalg.norm(cross)
 
-    def find_min_distance(self, node: Node, dt: float):
+    def get_fc_guess(self, node: Node, N: np.ndarray, del_t: float, phi_k_arr: np.ndarray):
         """
-        Find the minimum distance between the node and the surface at the given time.
+        Compute the initial fc guess for normal forces.
 
-        :param node: Node; The slave node that is in proximity of the surface.
-        :param dt: float; The time to project the surface.
+        :param node: Node; The slave node object.
+        :param N: np.array; The unit normal vector.
+        :param del_t: float; The time increment.
+        :param phi_k_arr: np.array; The array of phi_k values.
+        :return: float; The initial guess for the normal force increment.
         """
+        psn = np.dot(node.pos, N)
+        vsn = np.dot(node.vel, N)
+        Fsn = np.dot(node.corner_force, N)
+        Rsn = np.dot(node.contact_force, N)
+        ms = node.mass
 
-    def _get_distance(self, coord: np.ndarray):
-        # Find the distance between a node and point on the surface
-        pass
+        A_F = np.array([n.corner_force for n in self.nodes]).transpose()
+        A_R = np.array([n.contact_force for n in self.nodes]).transpose()
+        A_p = self.points.transpose()
+        A_v = self.vel_points.transpose()
+        pkn = np.dot(A_p@phi_k_arr, N)
+        vkn = np.dot(A_v@phi_k_arr, N)
+        Fkn = np.dot(A_F@phi_k_arr, N)
+        Rkn = np.dot(A_R@phi_k_arr, N)
+        m_avg = np.mean([n.mass for n in self.nodes])
+
+        # @formatter:off
+        return (Fkn*del_t**2*ms - Fsn*del_t**2*m_avg + Rkn*del_t**2*ms - Rsn*del_t**2*m_avg + 2*del_t*ms*m_avg*vkn - 2*del_t*ms*m_avg*vsn + 2*ms*m_avg*pkn - 2*ms*m_avg*psn)/(del_t**2*(ms + m_avg))
+        # @formatter:on
 
     @staticmethod
     def _decompose_and_plot(points, axes, decompose=True, patch_color="darkgrey", point_color='navy'):
@@ -740,7 +759,8 @@ class Surface:
                 axes.add_collection(patch)
 
     def _set_reference_plane(self):
-        # Determine which reference plane the surface is on. zeta=-1 plane? xi=1 plane? etc.
+        logger.warning('This method is no longer required. The xi/eta points are defined at the initialization by the '
+                       'assumption that the nodes are ordered correctly.')
         ref = np.array([node.ref for node in self.nodes])
 
         if ref.size == 0: raise RuntimeError('The reference coordinates have not been set.')
@@ -899,6 +919,7 @@ class GlobalMesh:
         self.nbox, self.lbox, self.npoint, self.nsort = None, None, None, None
 
         self.master_patches = master_patches if master_patches else np.where(self.surface_count == 1)[0]
+        self.contact_pairs = None
 
         self.sort()
 
@@ -1052,8 +1073,45 @@ class GlobalMesh:
                 if is_hitting and node not in all_nodes:
                     all_nodes.append(node)
                     all_nodes.extend([node.label for node in self.surfaces[patch].nodes])
-                    contact_pairs.append((patch, node, (xi, eta, del_tc), k))
+                    N = self.surfaces[patch].get_normal(np.array([xi, eta]), del_tc)
+                    contact_pairs.append((patch, node, (xi, eta, del_tc), N, k))
+
+        self.contact_pairs = contact_pairs
+
         return contact_pairs
+
+    def normal_increments(self, dt: float, tol=1e-12, max_iter=30):
+        """
+        Find the normal force across all patches and nodes in contact until there is no penetration.
+
+        :param dt: float; The current time step.
+        :param tol: float; The tolerance for all solving schemes. This affects a wider range of cases such as what is
+                    considered a zero, the edge cases, and the convergence criteria.
+        :param max_iter: int; The maximum number of iterations for all solving schemes.
+        """
+        if self.contact_pairs is None:
+            self.get_contact_pairs(dt, tol=tol, max_iter=max_iter)
+
+        fc_list = []
+        for k in range(max_iter):
+
+            if np.linalg.norm(fc_list) <= tol and fc_list:
+                return k
+
+            fc_list.clear()
+
+            for pair in self.contact_pairs:
+                surface_id, node_id, (xi, eta, del_tc), N, _ = pair
+                patch: Surface = self.surfaces[surface_id]
+                node: Node = self.nodes[node_id]
+                phi_k = phi_p_2D(xi, eta, patch.xi_p, patch.eta_p)
+
+                # Construct the guess
+                # This part needs to change for the fierro implementation. The guess should be based on the previous
+                # contact solution.
+                guess = (xi, eta, patch.get_fc_guess(node, N, dt, phi_k))
+                [(_, _, fc)] = patch.normal_increment([node], [guess], [N], dt, tol=tol, max_iter=max_iter)
+                fc_list.append(fc)
 
 
 def find_time(patch_nodes: list[Node], slave_node: Node, dt: float) -> float:

@@ -14,16 +14,6 @@ nodes = [
     Node(3, np.array([1, 0, 1]), np.array([0, 0, 0]))
 ]
 
-ref_points = [
-    [-1, 1, -1],
-    [1, 1, -1],
-    [1, 1, 1],
-    [-1, 1, 1]
-]
-
-for node, ref_point in zip(nodes, ref_points):
-    node.ref = ref_point
-
 surf = Surface(0, nodes)
 
 slave = Node(4, np.array([0.25, 1, 0.2]), np.array([0.75, -1, 0]))
@@ -50,7 +40,9 @@ else:
 surf.contact_visual_through_reference(ax, slave, dt, del_tc, only_contact=False)
 
 N = surf.get_normal(sol[2], del_tc)
-force_sol = surf.find_fc(slave, np.array([xi, eta, 1]), dt, N)
+phi_k = phi_p_2D(xi, eta, surf.xi_p, surf.eta_p)
+fc_guess = surf.get_fc_guess(slave, N, dt, phi_k)
+force_sol = surf.find_fc(slave, np.array([xi, eta, fc_guess]), dt, N)
 print('\nForce Solution:')
 print(surf.normal_increment([slave], [(xi, eta, 1)], [N], dt))
 print(force_sol, end='\n\n')
