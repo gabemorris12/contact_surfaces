@@ -3,7 +3,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 dt = 1
-inc = 5
+inc = 10
+
+np.set_printoptions(precision=50)
 
 patch_nodes = [
     Node(0, np.array([-1, -1, 0]), np.array([0, 0, 1])),
@@ -40,6 +42,13 @@ normals = [surf.get_normal(np.array([xi, eta]), del_tc) for _, del_tc, (xi, eta)
 
 for _ in range(inc):
     surf.normal_increment(slaves, guesses, normals, dt)
+
+slave_forces = np.array([slave.contact_force for slave in slaves])
+patch_forces = np.array([node.contact_force for node in patch_nodes])
+print(slave_forces)
+print(patch_forces)
+print(np.sum(slave_forces, axis=0))
+print(np.sum(patch_forces, axis=0))
 
 fig2, ax2 = plt.subplots(subplot_kw=dict(projection='3d', proj_type='ortho'))
 ax2.set_title('Normal Force Increments')

@@ -127,6 +127,12 @@ class Node:
         """
         return (self.corner_force + self.contact_force)/self.mass
 
+    def zero_contact(self):
+        """
+        Zero out the contact force.
+        """
+        self.contact_force = np.zeros((3,), dtype=np.float64)
+
     @property
     def ref(self):
         return self._ref
@@ -464,11 +470,17 @@ class Surface:
         for node, guess, N in zip(nodes, guesses, normals):
             (xi, eta, fc), _ = self.find_fc(node, guess, dt, N, tol=tol, max_iter=max_iter)
             phi_k_arr = phi_p_2D(xi, eta, self.xi_p, self.eta_p)
+            previous = np.copy(node.contact_force)
             node.contact_force += N*fc
 
             if np.dot(N, node.contact_force) < 0:
                 # Tensile behavior doesn't need to be obeyed
                 node.contact_force = np.zeros((3,), dtype=np.float64)
+                fc = 0
+
+                # The additional forces from previous iterations also need to be zeroed
+                for patch_node, phi_k in zip(self.nodes, phi_k_arr):
+                    patch_node.contact_force += previous*phi_k
             else:
                 for patch_node, phi_k in zip(self.nodes, phi_k_arr):
                     patch_node.contact_force += -N*fc*phi_k
@@ -509,7 +521,7 @@ class Surface:
         b2 = ref_to_physical((0, 1), A, self.xi_p, self.eta_p) - centroid
         b2 = b2/np.linalg.norm(b2)
         v = slave_later - centroid
-        v = v/np.linalg.norm(v)
+        v = v/np.linalg.norm(v) if np.linalg.norm(v) != 0 else v
         A = np.array([b1, b2])
         xi_guess, eta_guess = A@v
 
@@ -739,6 +751,12 @@ class Surface:
         # @formatter:off
         return (Fkn*del_t**2*ms - Fsn*del_t**2*m_avg + Rkn*del_t**2*ms - Rsn*del_t**2*m_avg + 2*del_t*ms*m_avg*vkn - 2*del_t*ms*m_avg*vsn + 2*ms*m_avg*pkn - 2*ms*m_avg*psn)/(del_t**2*(ms + m_avg))
         # @formatter:on
+
+    def zero_contact(self):
+        """
+        Zeroes out the contact forces for all the nodes in the surface.
+        """
+        for node in self.nodes: node.zero_contact()
 
     @staticmethod
     def _decompose_and_plot(points, axes, decompose=True, patch_color="darkgrey", point_color='navy'):
@@ -982,12 +1000,12 @@ class GlobalMesh:
                                                     self.az_max, dt)
 
         # Determine the buckets that intersect with the capture box.
-        ibox_min = min(self.Sx, int((xc_min - self.x_min)/self.bs))
-        jbox_min = min(self.Sy, int((yc_min - self.y_min)/self.bs))
-        kbox_min = min(self.Sz, int((zc_min - self.z_min)/self.bs))
-        ibox_max = min(self.Sx, int((xc_max - self.x_min)/self.bs))
-        jbox_max = min(self.Sy, int((yc_max - self.y_min)/self.bs))
-        kbox_max = min(self.Sz, int((zc_max - self.z_min)/self.bs))
+        ibox_min = max(0, min(self.Sx - 1, int((xc_min - self.x_min)/self.bs)))
+        jbox_min = max(0, min(self.Sy - 1, int((yc_min - self.y_min)/self.bs)))
+        kbox_min = max(0, min(self.Sz - 1, int((zc_min - self.z_min)/self.bs)))
+        ibox_max = max(0, min(self.Sx - 1, int((xc_max - self.x_min)/self.bs)))
+        jbox_max = max(0, min(self.Sy - 1, int((yc_max - self.y_min)/self.bs)))
+        kbox_max = max(0, min(self.Sz - 1, int((zc_max - self.z_min)/self.bs)))
 
         buckets, nodes = [], []
         for i in range(ibox_min, ibox_max + 1):
@@ -1062,9 +1080,9 @@ class GlobalMesh:
         all_nodes = []
         contact_pairs = []
         for patch in self.master_patches:
-            elem = self.get_element_by_surf[self.surfaces[patch]]
-            assert len(elem) == 1, 'Master patches should only have one element.'
-            elem[0].set_node_refs()
+            # elem = self.get_element_by_surf[self.surfaces[patch]]
+            # assert len(elem) == 1, 'Master patches should only have one element.'
+            # elem[0].set_node_refs()
 
             _, possible_nodes = self.find_nodes(patch, dt)
             for node in possible_nodes:
@@ -1112,6 +1130,9 @@ class GlobalMesh:
                 guess = (xi, eta, patch.get_fc_guess(node, N, dt, phi_k))
                 [(_, _, fc)] = patch.normal_increment([node], [guess], [N], dt, tol=tol, max_iter=max_iter)
                 fc_list.append(fc)
+
+        # noinspection PyUnboundLocalVariable
+        return k
 
 
 def find_time(patch_nodes: list[Node], slave_node: Node, dt: float) -> float:

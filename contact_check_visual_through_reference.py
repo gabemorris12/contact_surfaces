@@ -24,7 +24,6 @@ ax.set_title('Contact Detection')
 ax.set_xlabel('x')
 ax.set_ylabel('y')
 ax.set_zlabel('z')
-ax.set_aspect('equal')
 ax.view_init(azim=45, elev=25)
 
 sol = surf.contact_check_through_reference(slave, dt)
@@ -38,6 +37,7 @@ else:
     del_tc = None
 
 surf.contact_visual_through_reference(ax, slave, dt, del_tc, only_contact=False)
+ax.set_aspect('equal')
 
 N = surf.get_normal(sol[2], del_tc)
 phi_k = phi_p_2D(xi, eta, surf.xi_p, surf.eta_p)
@@ -53,7 +53,6 @@ ax2.set_title('Normal Force')
 ax2.set_xlabel('x')
 ax2.set_ylabel('y')
 ax2.set_zlabel('z')
-ax2.set_aspect('equal')
 ax2.view_init(azim=45, elev=25)
 
 # slave.contact_force = N*fc
@@ -62,6 +61,7 @@ ax2.view_init(azim=45, elev=25)
 #     node.contact_force = -N*fc*phi
 
 surf.contact_visual_through_reference(ax2, slave, dt, None, only_contact=False)
+ax2.set_aspect('equal')
 
 # clear the previous force
 slave.contact_force = np.zeros(3, dtype=np.float64)
@@ -78,7 +78,6 @@ ax3.set_title('Glue Force')
 ax3.set_xlabel('x')
 ax3.set_ylabel('y')
 ax3.set_zlabel('z')
-ax3.set_aspect('equal')
 ax3.view_init(azim=45, elev=25)
 
 slave.contact_force = G
@@ -87,5 +86,6 @@ for phi, node in zip(phi_k, surf.nodes):
     node.contact_force = -G*phi
 
 surf.contact_visual_through_reference(ax3, slave, dt, None, only_contact=False)
+ax3.set_aspect('equal')
 
 plt.show()

@@ -1,19 +1,42 @@
-from contact import MeshBody
+from contact import MeshBody, GlobalMesh
 import numpy as np
+import matplotlib.pyplot as plt
+from itertools import groupby
+
+dt = 1
 
 mesh1_points = np.float64([
-    [-2, 1, -0.5],
-    [0, 2, -0.5],
-    [2, 1, -0.5],
-    [-2, 0, -0.5],
-    [0, 1, -0.5],
-    [2, 0, -0.5],
-    [-2, 1, 0.5],
-    [0, 2, 0.5],
-    [2, 1, 0.5],
-    [-2, 0, 0.5],
-    [0, 1, 0.5],
-    [2, 0, 0.5]
+    [-0.5, -2, 1],
+    [-0.5, 0, 2],
+    [-0.5, 2, 1],
+    [-0.5, -2, 0],
+    [-0.5, 0, 1],
+    [-0.5, 2, 0],
+    [0.5, -2, 1],
+    [0.5, 0, 2],
+    [0.5, 2, 1],
+    [0.5, -2, 0],
+    [0.5, 0, 1],
+    [0.5, 2, 0]
+])
+
+mesh2_points = np.float64([
+    [-0.25, -1.5, 2],
+    [-0.25, -0.5, 2],
+    [-0.25, 0.5, 2],
+    [-0.25, 1.5, 2],
+    [-0.25, 1.5, 3],
+    [-0.25, 0.5, 3],
+    [-0.25, -0.5, 3],
+    [-0.25, -1.5, 3],
+    [0.25, -1.5, 2],
+    [0.25, -0.5, 2],
+    [0.25, 0.5, 2],
+    [0.25, 1.5, 2],
+    [0.25, 1.5, 3],
+    [0.25, 0.5, 3],
+    [0.25, -0.5, 3],
+    [0.25, -1.5, 3]
 ])
 
 mesh1_cells_dict = {
@@ -23,4 +46,58 @@ mesh1_cells_dict = {
     ])
 }
 
+mesh2_cells_dict = {
+    'hexahedron': np.array([
+        [0, 1, 6, 7, 8, 9, 14, 15],
+        [1, 2, 5, 6, 9, 10, 13, 14],
+        [2, 3, 4, 5, 10, 11, 12, 13]
+    ])
+}
+
 mesh1 = MeshBody(mesh1_points, mesh1_cells_dict)
+# mesh2 = MeshBody(mesh2_points, mesh2_cells_dict, velocity=np.float64([0, -1, 0]))
+mesh2 = MeshBody(mesh2_points, mesh2_cells_dict, velocity=np.float64([0, 0, -1]))
+glob_mesh = GlobalMesh(mesh1, mesh2, bs=0.9)
+
+for pair in glob_mesh.get_contact_pairs(dt):
+    print(pair)
+
+# Contact detection
+fig1, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, subplot_kw=dict(projection='3d', proj_type='ortho'))
+ax1.set_title('Contact Detection')
+ax1.set_xlabel('x')
+ax1.set_ylabel('y')
+ax1.set_zlabel('z')
+ax1.view_init(elev=30, azim=150)
+
+for patch_id, patch_stuff in groupby(glob_mesh.contact_pairs, lambda x: x[0]):
+    nodes, del_tc = [], []
+    for things in patch_stuff:
+        nodes.append(glob_mesh.nodes[things[1]])
+        del_tc.append(things[2][-1])
+
+    surf = glob_mesh.surfaces[patch_id]
+    surf.contact_visual_through_reference(ax1, nodes, dt, del_tc)
+
+ax1.set_aspect('equal')
+
+ax2.set_title('Normal Force')
+ax2.set_xlabel('x')
+ax2.set_ylabel('y')
+ax2.set_zlabel('z')
+ax2.view_init(elev=30, azim=150)
+
+print(glob_mesh.normal_increments(dt))
+
+for patch_id, patch_stuff in groupby(glob_mesh.contact_pairs, lambda x: x[0]):
+    nodes, del_tc = [], []
+    for things in patch_stuff:
+        nodes.append(glob_mesh.nodes[things[1]])
+        del_tc.append(things[2][-1])
+
+    surf = glob_mesh.surfaces[patch_id]
+    surf.contact_visual_through_reference(ax2, nodes, dt, None)
+
+ax2.set_aspect('equal')
+
+plt.show()

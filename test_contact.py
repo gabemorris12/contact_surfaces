@@ -277,6 +277,91 @@ class TestContact(unittest.TestCase):
         ]
         self.assertListEqual([pair[:2] for pair in contact_pairs], supposed_to_be)
 
+    def test_normal_increment(self):
+        # Single patch, multiple nodes as seen in normal_increment_check.py
+        dt = 1
+        inc = 10
+
+        patch_nodes = [
+            Node(0, np.array([-1, -1, 0]), np.array([0, 0, 1])),
+            Node(1, np.array([1, -1, 0]), np.array([0, 0, 1])),
+            Node(2, np.array([1, 1, 0]), np.array([0, 0, 1])),
+            Node(3, np.array([-1, 1, 0]), np.array([0, 0, 1]))
+        ]
+
+        slaves = [
+            Node(4, np.array([0.5, 0, 1]), np.array([0, 0, -1.5])),
+            Node(5, np.array([-0.5, 0, 1]), np.array([0, 0, -0.5])),
+            Node(6, np.array([0, 0.5, 1]), np.array([0, 0, -1]))
+            # Node(6, np.array([0, 0.5, 1]), np.array([0, 0, -0.25]))  # Tensile Behavior
+        ]
+
+        surf = Surface(0, patch_nodes)
+
+        check_sol = [surf.contact_check_through_reference(slave, dt) for slave in slaves]
+        guesses = [(xi, eta, 1) for _, _, (xi, eta), _ in check_sol]
+        normals = [surf.get_normal(np.array([xi, eta]), del_tc) for _, del_tc, (xi, eta), _ in check_sol]
+
+        for _ in range(inc):
+            surf.normal_increment(slaves, guesses, normals, dt)
+
+        slave_forces = np.array([[0., 0., 2.0414312617484804],
+                                 [0., 0., 0.2636534839966621],
+                                 [0., 0., 1.084745762715211]])
+
+        np.testing.assert_array_almost_equal(np.array([slave.contact_force for slave in slaves]), slave_forces, 12)
+
+        patch_forces = np.array([[0., 0., -0.4896421845567096],
+                                 [0., 0., -0.9340866289946642],
+                                 [0., 0., -1.2052730696734673],
+                                 [0., 0., -0.7608286252355123]])
+
+        np.testing.assert_array_almost_equal(np.array([node.contact_force for node in patch_nodes]), patch_forces, 12)
+
+        surf.zero_contact()
+        for slave in slaves: slave.zero_contact()
+
+        # Testing the tensile behavior
+        slaves[-1].vel = np.array([0, 0, -0.25])
+        check_sol = [surf.contact_check_through_reference(slave, dt) for slave in slaves]
+        guesses = [(xi, eta, 1) for _, _, (xi, eta), _ in check_sol]
+        normals = [surf.get_normal(np.array([xi, eta]), del_tc) for _, del_tc, (xi, eta), _ in check_sol]
+
+        for _ in range(inc):
+            surf.normal_increment(slaves, guesses, normals, dt)
+
+        slave_forces = np.array([[0., 0., 2.2222222222222223],
+                                 [0., 0., 0.44444444444444453],
+                                 [0., 0., 0.]])
+
+        np.testing.assert_array_almost_equal(np.array([slave.contact_force for slave in slaves]), slave_forces, 12)
+
+        patch_forces = np.array([[0., 0., -0.4444444444444447],
+                                 [0., 0., -0.8888888888888891],
+                                 [0., 0., -0.8888888888888891],
+                                 [0., 0., -0.4444444444444447]])
+
+        np.testing.assert_array_almost_equal(np.array([node.contact_force for node in patch_nodes]), patch_forces, 12)
+
+        # Swap the last slave node with the first to show that the order of the nodes does not matter.
+        slaves[0], slaves[-1] = slaves[-1], slaves[0]
+
+        surf.zero_contact()
+        for slave in slaves: slave.zero_contact()
+
+        check_sol = [surf.contact_check_through_reference(slave, dt) for slave in slaves]
+        guesses = [(xi, eta, 1) for _, _, (xi, eta), _ in check_sol]
+        normals = [surf.get_normal(np.array([xi, eta]), del_tc) for _, del_tc, (xi, eta), _ in check_sol]
+
+        for _ in range(inc):
+            surf.normal_increment(slaves, guesses, normals, dt)
+
+        slave_forces = np.array([[0., 0., 0.],
+                                 [0., 0., 0.44444444444444453],
+                                 [0., 0., 2.2222222222222223]])
+
+        np.testing.assert_array_almost_equal(np.array([slave.contact_force for slave in slaves]), slave_forces, 12)
+
 
 if __name__ == '__main__':
     unittest.main()
