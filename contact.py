@@ -1080,9 +1080,10 @@ class GlobalMesh:
         all_nodes = []
         contact_pairs = []
         for patch in self.master_patches:
-            # elem = self.get_element_by_surf[self.surfaces[patch]]
-            # assert len(elem) == 1, 'Master patches should only have one element.'
-            # elem[0].set_node_refs()
+            patch_obj = self.surfaces[patch]
+            patch_nodes_used = [node.label in all_nodes for node in patch_obj.nodes]
+            if all(patch_nodes_used):
+                continue
 
             _, possible_nodes = self.find_nodes(patch, dt)
             for node in possible_nodes:
@@ -1090,8 +1091,8 @@ class GlobalMesh:
                                                                                         max_iter=max_iter)
                 if is_hitting and node not in all_nodes:
                     all_nodes.append(node)
-                    all_nodes.extend([node.label for node in self.surfaces[patch].nodes])
-                    N = self.surfaces[patch].get_normal(np.array([xi, eta]), del_tc)
+                    all_nodes.extend([node.label for node in patch_obj.nodes])
+                    N = patch_obj.get_normal(np.array([xi, eta]), del_tc)
                     contact_pairs.append((patch, node, (xi, eta, del_tc), N, k))
 
         self.contact_pairs = contact_pairs

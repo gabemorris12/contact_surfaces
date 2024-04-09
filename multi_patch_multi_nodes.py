@@ -59,6 +59,7 @@ mesh1 = MeshBody(mesh1_points, mesh1_cells_dict)
 mesh2 = MeshBody(mesh2_points, mesh2_cells_dict, velocity=np.float64([0, 0, -1]))
 glob_mesh = GlobalMesh(mesh1, mesh2, bs=0.9)
 
+print('Contact Pairs:')
 for pair in glob_mesh.get_contact_pairs(dt):
     print(pair)
 
@@ -87,16 +88,28 @@ ax2.set_ylabel('y')
 ax2.set_zlabel('z')
 ax2.view_init(elev=30, azim=150)
 
-print(glob_mesh.normal_increments(dt))
+print('\nTotal Iterations:', glob_mesh.normal_increments(dt), '\n')
 
+all_patch_nodes = set()
 for patch_id, patch_stuff in groupby(glob_mesh.contact_pairs, lambda x: x[0]):
     nodes, del_tc = [], []
     for things in patch_stuff:
         nodes.append(glob_mesh.nodes[things[1]])
         del_tc.append(things[2][-1])
 
+    for node in nodes:
+        x_pos, y_pos, z_pos = node.pos
+        ax2.text(x_pos, y_pos, z_pos, f'{node.label}', color='black')
+        print(f'{node.label}: {node.contact_force}')
+
     surf = glob_mesh.surfaces[patch_id]
+    all_patch_nodes.update([node.label for node in surf.nodes])
     surf.contact_visual_through_reference(ax2, nodes, dt, None)
+
+slave_force = [glob_mesh.nodes[i[1]].contact_force for i in glob_mesh.contact_pairs]
+patch_force = [glob_mesh.nodes[i].contact_force for i in all_patch_nodes]
+print(f'\nTotal Force on Slaves: {np.sum(slave_force, axis=0)}')
+print(f'Total Force on Patches: {np.sum(patch_force, axis=0)}')
 
 ax2.set_aspect('equal')
 
