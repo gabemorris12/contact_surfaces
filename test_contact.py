@@ -426,11 +426,6 @@ class TestContact(unittest.TestCase):
 
         all_patch_nodes = set()
         for patch_id, patch_stuff in groupby(glob_mesh.contact_pairs, lambda x: x[0]):
-            nodes, del_tc = [], []
-            for things in patch_stuff:
-                nodes.append(glob_mesh.nodes[things[1]])
-                del_tc.append(things[2][-1])
-
             surf = glob_mesh.surfaces[patch_id]
             all_patch_nodes.update([node.label for node in surf.nodes])
 
@@ -454,6 +449,143 @@ class TestContact(unittest.TestCase):
                                               np.array([0., 0.14632776843469555, -0.2926555368693911]),
                                               np.array([0., -0.029472979602432874, -0.8460239699050659]),
                                               np.array([0., -0.12920545940984796, -0.2584109188196959])], 12)
+
+    def test_multi_body(self):
+        dt = 1
+
+        mesh1_points = np.float64([
+            [-0.5, -2, 1],
+            [-0.5, 0, 2],
+            [-0.5, 2, 1],
+            [-0.5, -2, 0],
+            [-0.5, 0, 1],
+            [-0.5, 2, 0],
+            [0.5, -2, 1],
+            [0.5, 0, 2],
+            [0.5, 2, 1],
+            [0.5, -2, 0],
+            [0.5, 0, 1],
+            [0.5, 2, 0]
+        ])
+
+        mesh2_points = np.float64([
+            [-0.25, -1.5, 2],
+            [-0.25, -0.5, 2],
+            [-0.25, 0.5, 2],
+            [-0.25, 1.5, 2],
+            [-0.25, 1.5, 3],
+            [-0.25, 0.5, 3],
+            [-0.25, -0.5, 3],
+            [-0.25, -1.5, 3],
+            [0.25, -1.5, 2],
+            [0.25, -0.5, 2],
+            [0.25, 0.5, 2],
+            [0.25, 1.5, 2],
+            [0.25, 1.5, 3],
+            [0.25, 0.5, 3],
+            [0.25, -0.5, 3],
+            [0.25, -1.5, 3]
+        ])
+
+        mesh3_points = np.float64([
+            [-0.25, -0.5, -0.5],
+            [-0.25, 0.5, -0.5],
+            [-0.25, 0.5, 0.5],
+            [-0.25, -0.5, 0.5],
+            [0.25, -0.5, -0.5],
+            [0.25, 0.5, -0.5],
+            [0.25, 0.5, 0.5],
+            [0.25, -0.5, 0.5]
+        ])
+
+        mesh4_points = np.float64([
+            [0, 2, 0.5],
+            [0, 2.5, 0.5],
+            [0, 2.5, 0.75],
+            [0, 2, 0.75],
+            [0.5, 2, 0.5],
+            [0.5, 2.5, 0.5],
+            [0.5, 2.5, 0.75],
+            [0.5, 2, 0.75]
+        ])
+
+        mesh1_cells_dict = {
+            'hexahedron': np.array([
+                [0, 1, 4, 3, 6, 7, 10, 9],
+                [1, 2, 5, 4, 7, 8, 11, 10]
+            ])
+        }
+
+        mesh2_cells_dict = {
+            'hexahedron': np.array([
+                [0, 1, 6, 7, 8, 9, 14, 15],
+                [1, 2, 5, 6, 9, 10, 13, 14],
+                [2, 3, 4, 5, 10, 11, 12, 13]
+            ])
+        }
+
+        mesh3_cells_dict = {
+            'hexahedron': np.array([
+                [0, 1, 2, 3, 4, 5, 6, 7]
+            ])
+        }
+
+        mesh4_cells_dict = {
+            'hexahedron': np.array([
+                [0, 1, 2, 3, 4, 5, 6, 7]
+            ])
+        }
+
+        mesh1 = MeshBody(mesh1_points, mesh1_cells_dict, mass=5.0)
+        mesh2 = MeshBody(mesh2_points, mesh2_cells_dict, velocity=np.float64([0, 0, -1]))
+        mesh3 = MeshBody(mesh3_points, mesh3_cells_dict, velocity=np.float64([0, 0, 0.75]))
+        mesh4 = MeshBody(mesh4_points, mesh4_cells_dict, velocity=np.float64([0, -0.5, -0.25]), mass=10)
+        glob_mesh = GlobalMesh(mesh1, mesh2, mesh3, mesh4, bs=0.9)
+        self.assertEqual(glob_mesh.normal_increments(dt), 23)
+
+        all_patch_nodes = set()
+        for patch_id, patch_stuff in groupby(glob_mesh.contact_pairs, lambda x: x[0]):
+            surf = glob_mesh.surfaces[patch_id]
+            all_patch_nodes.update([node.label for node in surf.nodes])
+
+        slave_force = [glob_mesh.nodes[i[1]].contact_force for i in glob_mesh.contact_pairs]
+        patch_force = [glob_mesh.nodes[i].contact_force for i in all_patch_nodes]
+
+        np.testing.assert_array_almost_equal(slave_force,
+                                             np.array([np.array([0., -0.1293446074581961, 0.2586892149163922]),
+                                                       np.array([0., -0.5116510302602347, 1.0233020605204695]),
+                                                       np.array([0., -0.12942908810494635, 0.2588581762098927]),
+                                                       np.array([0., -0.511859484452958, 1.023718968905916]),
+                                                       np.array([0., 0.3245433581681366, -0.6490867163362732]),
+                                                       np.array([0., 0.32443310026354, -0.64886620052708]),
+                                                       np.array([0., 0.4869618914857238, 0.9739237829714475]),
+                                                       np.array([0., 0.07728684655619554, 0.15457369311239108]),
+                                                       np.array([0., 0.47384294247874903, 0.9476858849574981]),
+                                                       np.array([0., 0.04951141096336773, 0.09902282192673546]),
+                                                       np.array([0., 3.699120291464036, 0.]),
+                                                       np.array([0., 0., 0.]),
+                                                       np.array([0., 0., 0.]),
+                                                       np.array([0., 4.074872534974702, 0.]),
+                                                       np.array([0., 1.6334994184996314, 0.]),
+                                                       np.array([0., 0., 0.]),
+                                                       np.array([0., 0., 0.]),
+                                                       np.array([0., 2.1836341738395646, 0.]),
+                                                       np.array([0., -0.3466690811880941, -0.6933381623761882]),
+                                                       np.array([0., -0.35715227866517113, -0.7143045573303423])]), 12)
+
+        np.testing.assert_array_almost_equal(patch_force,
+                                             np.array([np.array([0., 0.3090992543985239, -0.6181985087970479]),
+                                                       np.array([0., 0.009715199852176894, -1.308448068414747]),
+                                                       np.array([0., -1.8352612819847614, -0.46354144942874065]),
+                                                       np.array([0., -0.047963626551613056, 0.09592725310322611]),
+                                                       np.array([0., 0.0020299953896788783, 1.1102686593408546]),
+                                                       np.array([0., -2.21279813792167, 0.14141543605462073]),
+                                                       np.array([0., 0.30887431566089046, -0.6177486313217809]),
+                                                       np.array([0., 0.015942050379626378, -1.297479991989329]),
+                                                       np.array([0., -3.405839239043681, -0.43435795356909646]),
+                                                       np.array([0., -0.04813825632601285, 0.0962765126520257]),
+                                                       np.array([0., 0.004932116185150905, 1.115153866025006]),
+                                                       np.array([0., -4.442192788602356, 0.14655390939414958])]), 12)
 
 
 if __name__ == '__main__':

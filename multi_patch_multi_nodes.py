@@ -96,10 +96,7 @@ print('\nTotal Iterations:', glob_mesh.normal_increments(dt), '\n')
 
 all_patch_nodes = set()
 for patch_id, patch_stuff in groupby(glob_mesh.contact_pairs, lambda x: x[0]):
-    nodes, del_tc = [], []
-    for things in patch_stuff:
-        nodes.append(glob_mesh.nodes[things[1]])
-        del_tc.append(things[2][-1])
+    nodes = [glob_mesh.nodes[things[1]] for things in patch_stuff]
 
     for node in nodes:
         x_pos, y_pos, z_pos = node.pos

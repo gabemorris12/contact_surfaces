@@ -1,6 +1,7 @@
 from contact import MeshBody, GlobalMesh
 import numpy as np
 import matplotlib.pyplot as plt
+from itertools import groupby
 
 dt = 1
 
@@ -131,5 +132,15 @@ ax2.set_aspect('equal')
 
 for pair in glob_mesh.contact_pairs:
     print(pair)
+
+all_patch_nodes = set()
+for patch_id, patch_stuff in groupby(glob_mesh.contact_pairs, lambda x: x[0]):
+    surf = glob_mesh.surfaces[patch_id]
+    all_patch_nodes.update([node.label for node in surf.nodes])
+
+slave_force = [glob_mesh.nodes[i[1]].contact_force for i in glob_mesh.contact_pairs]
+patch_force = [glob_mesh.nodes[i].contact_force for i in all_patch_nodes]
+print('Total Slave Force:', np.sum(slave_force, axis=0))
+print('Total Patch Force:', np.sum(patch_force, axis=0))
 
 plt.show()
