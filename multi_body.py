@@ -99,14 +99,14 @@ mesh2.alpha = 0.25
 mesh3 = MeshBody(mesh3_points, mesh3_cells_dict, velocity=np.float64([0, 0, 0.75]))
 mesh3.color = 'seagreen'
 mesh3.alpha = 0.25
-mesh4 = MeshBody(mesh4_points, mesh4_cells_dict, velocity=np.float64([0, -0.5, -0.25]), mass=10)
+mesh4 = MeshBody(mesh4_points, mesh4_cells_dict, velocity=np.float64([0, -0.499, -0.25]), mass=10)
 mesh4.color = 'darkred'
 mesh4.alpha = 0.25
 glob_mesh = GlobalMesh(mesh1, mesh2, mesh3, mesh4, bs=0.9)
 
-print('Iteration Count:', glob_mesh.normal_increments(dt))
+print('Normal Iteration Count:', glob_mesh.normal_increments(dt))
 
-fig1, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, subplot_kw=dict(projection='3d', proj_type='ortho'))
+fig1, (ax1, ax2, ax3) = plt.subplots(nrows=1, ncols=3, subplot_kw=dict(projection='3d', proj_type='ortho'))
 ax1.set_xlabel('x')
 ax1.set_ylabel('y')
 ax1.set_zlabel('z')
@@ -117,7 +117,7 @@ ax2.set_xlabel('x')
 ax2.set_ylabel('y')
 ax2.set_zlabel('z')
 ax2.view_init(elev=27, azim=-24)
-ax2.set_title(r'At $t + \Delta t$')
+ax2.set_title(r'At $t + \Delta t$ (Normal)')
 
 for mesh in glob_mesh.mesh_bodies:
     for surf in mesh.surfaces:
@@ -127,8 +127,6 @@ for mesh in glob_mesh.mesh_bodies:
         surf.project_surface(ax1, 0, N=2, ls='-', color=mesh.color, alpha=mesh.alpha)
         surf.project_surface(ax2, dt, N=2, ls='-', color=mesh.color, alpha=mesh.alpha)
 
-ax1.set_aspect('equal')
-ax2.set_aspect('equal')
 
 for pair in glob_mesh.contact_pairs:
     print(pair)
@@ -142,5 +140,28 @@ slave_force = [glob_mesh.nodes[i[1]].contact_force for i in glob_mesh.contact_pa
 patch_force = [glob_mesh.nodes[i].contact_force for i in all_patch_nodes]
 print('Total Slave Force:', np.sum(slave_force, axis=0))
 print('Total Patch Force:', np.sum(patch_force, axis=0))
+
+for surf in glob_mesh.surfaces: surf.zero_contact()
+
+print('Glue Iteration Count:', glob_mesh.glue_increments(dt))
+
+slave_force = [glob_mesh.nodes[i[1]].contact_force for i in glob_mesh.contact_pairs]
+patch_force = [glob_mesh.nodes[i].contact_force for i in all_patch_nodes]
+print('Total Slave Force:', np.sum(slave_force, axis=0))
+print('Total Patch Force:', np.sum(patch_force, axis=0))
+
+for mesh in glob_mesh.mesh_bodies:
+    for surf in mesh.surfaces:
+        surf.project_surface(ax3, dt, N=2, ls='-', color=mesh.color, alpha=mesh.alpha)
+
+ax3.set_title(r'At $t + \Delta t$ (Glue)')
+ax3.set_xlabel('x')
+ax3.set_ylabel('y')
+ax3.set_zlabel('z')
+ax3.view_init(elev=27, azim=-24)
+
+ax1.set_aspect('equal')
+ax2.set_aspect('equal')
+ax3.set_aspect('equal')
 
 plt.show()

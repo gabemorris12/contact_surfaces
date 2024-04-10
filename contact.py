@@ -492,6 +492,32 @@ class Surface:
 
         return sols
 
+    def glue_increment(self, nodes: list[Node], guesses: list[tuple], refs: list[np.ndarray], dt: float, tol=1e-12,
+                       max_iter=30):
+        """
+        Find and store the glue force increment for each node. This just does one iteration through all nodes.
+
+        :param nodes: list; The list of node objects.
+        :param guesses: list; The list of initial guesses (Gx, Gy, Gz) corresponding to each node.
+        :param refs: list; The list of reference points (xi, eta) corresponding to each node.
+        :param dt: float; The current time step in the analysis.
+        :param tol: float; The tolerance for the Newton-Raphson scheme.
+        :param max_iter: int; The maximum number of iterations for the Newton-Raphson scheme.
+        :return:
+        """
+        sols = []
+        for node, guess, ref in zip(nodes, guesses, refs):
+            phi_k_arr = phi_p_2D(ref[0], ref[1], self.xi_p, self.eta_p)
+            (Gx, Gy, Gz), _ = self.find_glue_force(node, guess, dt, ref, tol=tol, max_iter=max_iter)
+            node.contact_force += np.array([Gx, Gy, Gz])
+
+            for patch_node, phi_k in zip(self.nodes, phi_k_arr):
+                patch_node.contact_force += -np.array([Gx, Gy, Gz])*phi_k
+
+            sols.append((Gx, Gy, Gz))
+
+        return sols
+
     def contact_check_through_reference(self, node: Node, dt: float, tol=1e-12, max_iter=30):
         """
         This procedure finds the reference point and the delta_tc all at once using a Newton-Raphson scheme. If all the
@@ -1134,6 +1160,39 @@ class GlobalMesh:
                 guess = (xi, eta, patch.get_fc_guess(node, N, dt, phi_k))
                 [(_, _, fc)] = patch.normal_increment([node], [guess], [N], dt, tol=tol, max_iter=max_iter)
                 fc_list.append(fc)
+
+        # noinspection PyUnboundLocalVariable
+        return k
+
+    def glue_increments(self, dt: float, tol=1e-12, max_iter=30):
+        """
+        Find the glue force across all patches and nodes until each contact pair rests on the glued contact point.
+
+        :param dt: float; The current time step.
+        :param tol: float; The tolerance for all solving schemes. This affects a wider range of cases such as what is
+                    considered a zero, the edge cases, and the convergence criteria.
+        :param max_iter: int; The maximum number of iterations for all solving schemes.
+        :return:
+        """
+        if self.contact_pairs is None:
+            self.get_contact_pairs(dt, tol=tol, max_iter=max_iter)
+
+        g_list = []
+        for k in range(max_iter):
+
+            if np.linalg.norm(g_list) <= tol and g_list:
+                return k
+
+            g_list.clear()
+
+            for pair in self.contact_pairs:
+                surface_id, node_id, (xi, eta, del_tc), N, _ = pair
+                patch: Surface = self.surfaces[surface_id]
+                node: Node = self.nodes[node_id]
+
+                [(Gx, Gy, Gz)] = patch.glue_increment([node], [(1, 1, 1)], [np.array([xi, eta])],
+                                                      dt, tol=tol, max_iter=max_iter)
+                g_list.append(np.linalg.norm([Gx, Gy, Gz]))
 
         # noinspection PyUnboundLocalVariable
         return k

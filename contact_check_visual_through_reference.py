@@ -19,7 +19,7 @@ surf = Surface(0, nodes)
 slave = Node(4, np.array([0.25, 1, 0.2]), np.array([0.75, -1, 0]))
 # slave.corner_force = np.array([-1, 0.1, 0.4])
 
-fig, ax = plt.subplots(subplot_kw=dict(projection='3d', proj_type='ortho'))
+fig, (ax, ax2, ax3) = plt.subplots(nrows=1, ncols=3, subplot_kw=dict(projection='3d', proj_type='ortho'))
 ax.set_title('Contact Detection')
 ax.set_xlabel('x')
 ax.set_ylabel('y')
@@ -48,7 +48,6 @@ print(surf.normal_increment([slave], [(xi, eta, 1)], [N], dt))
 print(force_sol, end='\n\n')
 xi, eta, fc = force_sol[0]
 
-fig2, ax2 = plt.subplots(subplot_kw=dict(projection='3d', proj_type='ortho'))
 ax2.set_title('Normal Force')
 ax2.set_xlabel('x')
 ax2.set_ylabel('y')
@@ -64,28 +63,44 @@ surf.contact_visual_through_reference(ax2, slave, dt, None, only_contact=False)
 ax2.set_aspect('equal')
 
 # clear the previous force
-slave.contact_force = np.zeros(3, dtype=np.float64)
-for node in surf.nodes:
-    node.contact_force = np.zeros(3, dtype=np.float64)
+slave.zero_contact()
+surf.zero_contact()
 
 glued_force_sol = surf.find_glue_force(slave, np.array([1, 1, 1]), dt, sol[2])
 print('Glue Force Solution:')
+print(surf.glue_increment([slave], [(1, 1, 1)], [sol[2]], dt))
 print(glued_force_sol, end='\n\n')
 G = glued_force_sol[0]
 
-fig3, ax3 = plt.subplots(subplot_kw=dict(projection='3d', proj_type='ortho'))
 ax3.set_title('Glue Force')
 ax3.set_xlabel('x')
 ax3.set_ylabel('y')
 ax3.set_zlabel('z')
 ax3.view_init(azim=45, elev=25)
 
-slave.contact_force = G
-phi_k = phi_p_2D(sol[2][0], sol[2][1], surf.xi_p, surf.eta_p)
-for phi, node in zip(phi_k, surf.nodes):
-    node.contact_force = -G*phi
+# slave.contact_force = G
+# phi_k = phi_p_2D(sol[2][0], sol[2][1], surf.xi_p, surf.eta_p)
+# for phi, node in zip(phi_k, surf.nodes):
+#     node.contact_force = -G*phi
 
 surf.contact_visual_through_reference(ax3, slave, dt, None, only_contact=False)
 ax3.set_aspect('equal')
 
 plt.show()
+
+"""
+The output should be this
+
+Contact Detection Solution:
+(True, 0.6221606424928471, array([-0.43324096, -0.6       ]), 4)
+
+Normal: [-0.36246427  0.85674929  0.36687915] at [-0.43324096 -0.6       ]
+
+Force Solution:
+[(-0.5814653653050698, -0.17636753340567574, 0.8585511497812912)]
+(array([-0.58146537, -0.17636753,  0.85855115]), 4)
+
+Glue Force Solution:
+[(-0.40372708391823187, 0.8652150936465433, 0.0)]
+(array([-0.40372708,  0.86521509,  0.        ]), 1)
+"""
