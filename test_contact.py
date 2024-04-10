@@ -1,5 +1,6 @@
 import unittest
 import logging
+from itertools import groupby
 
 import meshio
 import numpy as np
@@ -361,6 +362,98 @@ class TestContact(unittest.TestCase):
                                  [0., 0., 2.2222222222222223]])
 
         np.testing.assert_array_almost_equal(np.array([slave.contact_force for slave in slaves]), slave_forces, 12)
+
+    def test_normal_increments(self):
+        dt = 1
+
+        mesh1_points = np.float64([
+            [-0.5, -2, 1],
+            [-0.5, 0, 2],
+            [-0.5, 2, 1],
+            [-0.5, -2, 0],
+            [-0.5, 0, 1],
+            [-0.5, 2, 0],
+            [0.5, -2, 1],
+            [0.5, 0, 2],
+            [0.5, 2, 1],
+            [0.5, -2, 0],
+            [0.5, 0, 1],
+            [0.5, 2, 0]
+        ])
+
+        mesh2_points = np.float64([
+            [-0.25, -1.5, 2],
+            [-0.25, -0.5, 2],
+            [-0.25, 0.5, 2],
+            [-0.25, 1.5, 2],
+            [-0.25, 1.5, 3],
+            [-0.25, 0.5, 3],
+            [-0.25, -0.5, 3],
+            [-0.25, -1.5, 3],
+            [0.25, -1.5, 2],
+            [0.25, -0.5, 2],
+            [0.25, 0.5, 2],
+            [0.25, 1.5, 2],
+            [0.25, 1.5, 3],
+            [0.25, 0.5, 3],
+            [0.25, -0.5, 3],
+            [0.25, -1.5, 3]
+        ])
+
+        mesh1_cells_dict = {
+            'hexahedron': np.array([
+                [0, 1, 4, 3, 6, 7, 10, 9],
+                [1, 2, 5, 4, 7, 8, 11, 10]
+            ])
+        }
+
+        mesh2_cells_dict = {
+            'hexahedron': np.array([
+                [0, 1, 6, 7, 8, 9, 14, 15],
+                [1, 2, 5, 6, 9, 10, 13, 14],
+                [2, 3, 4, 5, 10, 11, 12, 13]
+            ])
+        }
+
+        mesh1 = MeshBody(mesh1_points, mesh1_cells_dict)
+        mesh2 = MeshBody(mesh2_points, mesh2_cells_dict, velocity=np.float64([0, 0, -1]))
+        glob_mesh = GlobalMesh(mesh1, mesh2, bs=0.9)
+
+        iters = glob_mesh.normal_increments(dt)
+        self.assertEqual(iters, 16)
+        contact_pairs = [(2, 12), (2, 13), (2, 20), (2, 21), (8, 14), (8, 15), (8, 22), (8, 23)]
+        self.assertListEqual([(pair[0], pair[1]) for pair in glob_mesh.contact_pairs], contact_pairs)
+
+        all_patch_nodes = set()
+        for patch_id, patch_stuff in groupby(glob_mesh.contact_pairs, lambda x: x[0]):
+            nodes, del_tc = [], []
+            for things in patch_stuff:
+                nodes.append(glob_mesh.nodes[things[1]])
+                del_tc.append(things[2][-1])
+
+            surf = glob_mesh.surfaces[patch_id]
+            all_patch_nodes.update([node.label for node in surf.nodes])
+
+        slave_force = [glob_mesh.nodes[i[1]].contact_force for i in glob_mesh.contact_pairs]
+        patch_force = [glob_mesh.nodes[i].contact_force for i in all_patch_nodes]
+
+        np.testing.assert_array_almost_equal(slave_force,
+                                             [np.array([0., -0.011499387462763189, 0.022998774925526377]),
+                                              np.array([0., -0.33112171561802917, 0.6622434312360583]),
+                                              np.array([0., -0.012319446199142407, 0.024638892398284814]),
+                                              np.array([0., -0.3309365475869207, 0.6618730951738414]),
+                                              np.array([0., 0.3312557928943872, 0.6625115857887744]),
+                                              np.array([0., 0.024831153071986422, 0.049662306143972844]),
+                                              np.array([0., 0.33089155280555577, 0.6617831056111115]),
+                                              np.array([0., 0.024343387455427544, 0.04868677491085509])], 12)
+
+        np.testing.assert_array_almost_equal(patch_force,
+                                             [np.array([0., 0.14897311267489768, -0.29794622534979537]),
+                                              np.array([0., -0.03396082880881164, -0.8431485099464727]),
+                                              np.array([0., -0.12810640264900205, -0.2562128052980041]),
+                                              np.array([0., 0.14632776843469555, -0.2926555368693911]),
+                                              np.array([0., -0.029472979602432874, -0.8460239699050659]),
+                                              np.array([0., -0.12920545940984796, -0.2584109188196959])], 12)
 
 
 if __name__ == '__main__':

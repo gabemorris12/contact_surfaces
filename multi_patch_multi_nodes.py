@@ -5,6 +5,8 @@ from itertools import groupby
 
 dt = 1
 
+np.set_printoptions(precision=50)
+
 mesh1_points = np.float64([
     [-0.5, -2, 1],
     [-0.5, 0, 2],
@@ -55,8 +57,10 @@ mesh2_cells_dict = {
 }
 
 mesh1 = MeshBody(mesh1_points, mesh1_cells_dict)
-# mesh2 = MeshBody(mesh2_points, mesh2_cells_dict, velocity=np.float64([0, -1, 0]))
 mesh2 = MeshBody(mesh2_points, mesh2_cells_dict, velocity=np.float64([0, 0, -1]))
+# This is the reason why we need to have the logic adjust the contact pairs. If the master patch 8 was selected, then
+# it would incorrectly perform force calculation with this pair.
+# mesh2 = MeshBody(mesh2_points, mesh2_cells_dict, velocity=np.float64([0, -1, 0]))
 glob_mesh = GlobalMesh(mesh1, mesh2, bs=0.9)
 
 print('Contact Pairs:')
