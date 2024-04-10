@@ -16,11 +16,12 @@ logger.addHandler(stream_handler)
 
 
 class MeshBody:
-    def __init__(self, points: np.ndarray, cells_dict: dict, velocity=np.float64([0, 0, 0])):
+    def __init__(self, points: np.ndarray, cells_dict: dict, velocity=np.float64([0, 0, 0]), mass=1.0):
         """
         :param points: numpy.array; Nodal coordinates. The order determines the node labels starting at zero.
         :param cells_dict: dict; Cell information as constructed from meshio.Mesh.cells_dict.
         :param velocity: numpy.array; Velocity to be added to all the nodes as constructed.
+        :param mass: float; The mass of the nodes.
 
         Additional Instance Variables
         -----------------------------
@@ -34,14 +35,16 @@ class MeshBody:
                              corresponding to the element that contains the surface.
         nodes: numpy.array; An array of node objects
         """
-        self.points, self.cells_dict, self.velocity = points, cells_dict, velocity
+        self.points, self.cells_dict, self.velocity, self.mass = points, cells_dict, velocity, mass
         self.surfaces, self.surface_count = [], np.zeros(self._surface_count(), dtype=np.int32)
         self.surface_dict = dict()
         self.get_element_by_surf = dict()
         self.elements = []
 
+        if velocity.shape == (3,):
+            velocity = np.full(points.shape, velocity)
         # noinspection PyTypeChecker
-        self.nodes = np.array([Node(i, p, velocity) for i, p in enumerate(points)], dtype=object)
+        self.nodes = np.array([Node(i, p, velocity[i], mass=mass) for i, p in enumerate(points)], dtype=object)
 
         self._construct_elements()
         self.surface_count = self.surface_count[self.surface_count > 0]
@@ -646,7 +649,7 @@ class Surface:
                 # Don't need this for right now.
                 # axes.plot(penetration_points[:, 0], penetration_points[:, 1], penetration_points[:, 2], 'k--')
 
-    def project_surface(self, axes: Axes3D, del_t: float, N=9, alpha=0.25, color='navy', show_grid=False,
+    def project_surface(self, axes: Axes3D, del_t: float, N=9, alpha=0.25, color='navy', ls='--', show_grid=False,
                         triangulate=False):
         """
         Project the surface at time del_t later onto the given axes object.
@@ -656,6 +659,7 @@ class Surface:
         :param N: int; The size of the grid in each direction.
         :param alpha: float; The transparency of the surface.
         :param color: str; The color of the surface.
+        :param ls: str; The line style of the surface.
         :param show_grid: bool; Whether to show the grid of the surface.
         :param triangulate: bool; Whether to use the triangulate method to generate a mesh.
         """
@@ -687,10 +691,10 @@ class Surface:
         for r, i in enumerate(index):
             # Plotting the column
             # noinspection PyTypeChecker
-            axes.plot(x_values[i:i + N], y_values[i:i + N], z_values[i:i + N], color=color, ls='--', alpha=alpha)
+            axes.plot(x_values[i:i + N], y_values[i:i + N], z_values[i:i + N], color=color, ls=ls, alpha=alpha)
 
             # Plotting the row
-            axes.plot(points[0, index + r], points[1, index + r], points[2, index + r], color=color, ls='--',
+            axes.plot(points[0, index + r], points[1, index + r], points[2, index + r], color=color, ls=ls,
                       alpha=alpha)
 
         if show_grid:
@@ -1077,11 +1081,10 @@ class GlobalMesh:
         :param max_iter: int; The maximum number of iterations for the Newton-Raphson scheme.
         :return: list; A list of tuples where each tuple consists of (surface_id, node_id, (xi, eta, del_tc), iters).
         """
-        all_nodes = []
-        contact_pairs = []
+        contact_pairs, master_nodes, slave_nodes = [], [], []
         for patch in self.master_patches:
             patch_obj = self.surfaces[patch]
-            patch_nodes_used = [node.label in all_nodes for node in patch_obj.nodes]
+            patch_nodes_used = [node.label in slave_nodes for node in patch_obj.nodes]
             if all(patch_nodes_used):
                 continue
 
@@ -1089,9 +1092,9 @@ class GlobalMesh:
             for node in possible_nodes:
                 is_hitting, del_tc, (xi, eta), k = self.contact_check_through_reference(patch, node, dt, tol=tol,
                                                                                         max_iter=max_iter)
-                if is_hitting and node not in all_nodes:
-                    all_nodes.append(node)
-                    all_nodes.extend([node.label for node in patch_obj.nodes])
+                if is_hitting and node not in master_nodes and node not in slave_nodes:
+                    slave_nodes.append(node)
+                    master_nodes.extend([node.label for node in patch_obj.nodes])
                     N = patch_obj.get_normal(np.array([xi, eta]), del_tc)
                     contact_pairs.append((patch, node, (xi, eta, del_tc), N, k))
 
