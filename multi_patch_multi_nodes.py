@@ -69,7 +69,7 @@ ax1.set_title('Contact Detection')
 ax1.set_xlabel('x')
 ax1.set_ylabel('y')
 ax1.set_zlabel('z')
-ax1.view_init(elev=30, azim=150)
+ax1.view_init(elev=27, azim=-24)
 
 for patch_id, patch_stuff in groupby(glob_mesh.contact_pairs, lambda x: x[0]):
     nodes, del_tc = [], []
@@ -86,7 +86,7 @@ ax2.set_title('Normal Force')
 ax2.set_xlabel('x')
 ax2.set_ylabel('y')
 ax2.set_zlabel('z')
-ax2.view_init(elev=30, azim=150)
+ax2.view_init(elev=27, azim=-24)
 
 print('\nTotal Iterations:', glob_mesh.normal_increments(dt), '\n')
 
