@@ -788,6 +788,44 @@ class Surface:
         """
         for node in self.nodes: node.zero_contact()
 
+    def physical_to_ref(self, point: np.ndarray, del_t: float, guess=np.float64([0, 0]), tol=1e-12, max_iter=30):
+        """
+        Converts a physical point to a reference point on the surface. This is only valid if the point is on the
+        surface.
+
+        :param point: np.array; The physical point. Only include the x and y values as only two dimensions are needed.
+        :param del_t: float; The time at which the surface is being projected.
+        :param guess: np.array; The initial guess for the Newton-Raphson scheme.
+        :param tol: float; The tolerance for the Newton-Raphson scheme.
+        :param max_iter: int; The maximum number of iterations for the Newton-Raphson scheme.
+        :return: tuple; (xi, eta) coordinate and k iterations.
+        """
+
+        sol = guess
+        assert point.shape == (2,), 'The point must be a 2D array.'
+
+        A = self.construct_position_basis(del_t)[:2, :]
+
+        for k in range(max_iter):
+
+            xi, eta = sol
+            phi_k_arr = phi_p_2D(xi, eta, self.xi_p, self.eta_p)
+            F = A@phi_k_arr - point
+
+            if np.linalg.norm(F) < tol:
+                return sol, k
+
+            d_phi_d_xi = d_phi_p_2D_d_xi(eta, self.xi_p, self.eta_p)
+            d_phi_d_eta = d_phi_p_2D_d_eta(xi, self.xi_p, self.eta_p)
+            J0 = A@d_phi_d_xi
+            J1 = A@d_phi_d_eta
+            J = np.column_stack((J0, J1))
+
+            sol = sol - np.linalg.inv(J)@F
+
+        # noinspection PyUnboundLocalVariable
+        return sol, k
+
     @staticmethod
     def _decompose_and_plot(points, axes, decompose=True, patch_color="darkgrey", point_color='navy'):
         # Decompose the surface into facets and plot
@@ -1138,6 +1176,9 @@ class GlobalMesh:
         self.contact_pairs = contact_pairs
 
         return contact_pairs
+
+    def get_edge_normal(self):
+        pass
 
     def normal_increments(self, dt: float, tol=1e-12, max_iter=30):
         """
