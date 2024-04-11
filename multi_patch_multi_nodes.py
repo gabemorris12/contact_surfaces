@@ -111,10 +111,13 @@ slave_force = [glob_mesh.nodes[i[1]].contact_force for i in glob_mesh.contact_pa
 patch_force = [glob_mesh.nodes[i].contact_force for i in all_patch_nodes]
 print(f'\nTotal Force on Slaves: {np.sum(slave_force, axis=0)}')
 print(f'Total Force on Patches: {np.sum(patch_force, axis=0)}')
+print(f'Contact Pairs After Normal Iteration:')
+for pair in glob_mesh.contact_pairs: print(pair)
 
 ax2.set_aspect('equal')
 
 for surf in glob_mesh.surfaces: surf.zero_contact()
+glob_mesh.contact_pairs = None
 
 ax3.set_title('Glue Force')
 ax3.set_xlabel('x')
@@ -124,11 +127,13 @@ ax3.view_init(elev=27, azim=-24)
 
 print('\nTotal Glue Iterations:', glob_mesh.glue_increments(dt), '\n')
 
+# noinspection PyTypeChecker
 for patch_id, patch_stuff in groupby(glob_mesh.contact_pairs, lambda x: x[0]):
     nodes = [glob_mesh.nodes[things[1]] for things in patch_stuff]
     surf = glob_mesh.surfaces[patch_id]
     surf.contact_visual_through_reference(ax3, nodes, dt, None)
 
+# noinspection PyTypeChecker
 slave_force = [glob_mesh.nodes[i[1]].contact_force for i in glob_mesh.contact_pairs]
 patch_force = [glob_mesh.nodes[i].contact_force for i in all_patch_nodes]
 print(f'Total Force on Slaves: {np.sum(slave_force, axis=0)}')
@@ -172,6 +177,15 @@ Total Normal Iterations: 16
 
 Total Force on Slaves: [0.                  0.02544478936050145 2.794397966188425  ]
 Total Force on Patches: [ 0.                   -0.025444789360501305 -2.7943979661884253  ]
+Contact Pairs After Normal Iteration:
+(2, 12, (-0.5, -0.559978015676851, 0.75), array([ 0.                , -0.4472135954999579,  0.8944271909999159]), 1)
+(2, 13, (-0.5, 0.320065952969447, 0.25000000000000006), array([ 0.                , -0.4472135954999579,  0.8944271909999159]), 1)
+(2, 20, (0.5, -0.5601256066782011, 0.75), array([ 0.                , -0.4472135954999579,  0.8944271909999159]), 1)
+(2, 21, (0.5, 0.3196231799640822, 0.25000000000000006), array([ 0.                , -0.4472135954999579,  0.8944271909999159]), 1)
+(8, 14, (-0.5, -0.3012629336371398, 0.25000000000000006), array([-0.                ,  0.4472135954999579,  0.8944271909999159]), 1)
+(8, 15, (-0.5, 0.5662456887876202, 0.75), array([-0.                ,  0.4472135954999579,  0.8944271909999159]), 1)
+(8, 22, (0.5, -0.30209961256039203, 0.25000000000000006), array([-0.                ,  0.4472135954999579,  0.8944271909999159]), 1)
+(8, 23, (0.5, 0.5659667958132027, 0.75), array([-0.                ,  0.4472135954999579,  0.8944271909999159]), 1)
 
 Total Glue Iterations: 18 
 

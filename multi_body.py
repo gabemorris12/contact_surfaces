@@ -127,12 +127,13 @@ for mesh in glob_mesh.mesh_bodies:
         surf.project_surface(ax1, 0, N=2, ls='-', color=mesh.color, alpha=mesh.alpha)
         surf.project_surface(ax2, dt, N=2, ls='-', color=mesh.color, alpha=mesh.alpha)
 
+# for node in glob_mesh.nodes: ax1.text(*node.pos, str(node.label), color='black')
 
 for pair in glob_mesh.contact_pairs:
     print(pair)
 
 all_patch_nodes = set()
-for patch_id, patch_stuff in groupby(glob_mesh.contact_pairs, lambda x: x[0]):
+for patch_id, patch_stuff in groupby(glob_mesh.contact_pairs, lambda x_: x_[0]):
     surf = glob_mesh.surfaces[patch_id]
     all_patch_nodes.update([node.label for node in surf.nodes])
 
@@ -142,9 +143,11 @@ print('Total Slave Force:', np.sum(slave_force, axis=0))
 print('Total Patch Force:', np.sum(patch_force, axis=0))
 
 for surf in glob_mesh.surfaces: surf.zero_contact()
+glob_mesh.contact_pairs = None
 
 print('Glue Iteration Count:', glob_mesh.glue_increments(dt))
 
+# noinspection PyTypeChecker
 slave_force = [glob_mesh.nodes[i[1]].contact_force for i in glob_mesh.contact_pairs]
 patch_force = [glob_mesh.nodes[i].contact_force for i in all_patch_nodes]
 print('Total Slave Force:', np.sum(slave_force, axis=0))

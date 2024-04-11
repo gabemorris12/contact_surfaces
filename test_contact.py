@@ -541,7 +541,7 @@ class TestContact(unittest.TestCase):
         mesh3 = MeshBody(mesh3_points, mesh3_cells_dict, velocity=np.float64([0, 0, 0.75]))
         mesh4 = MeshBody(mesh4_points, mesh4_cells_dict, velocity=np.float64([0, -0.499, -0.25]), mass=10)
         glob_mesh = GlobalMesh(mesh1, mesh2, mesh3, mesh4, bs=0.9)
-        self.assertEqual(glob_mesh.normal_increments(dt), 23)
+        self.assertEqual(glob_mesh.normal_increments(dt), 26)
 
         all_patch_nodes = set()
         for patch_id, patch_stuff in groupby(glob_mesh.contact_pairs, lambda x: x[0]):
@@ -585,9 +585,11 @@ class TestContact(unittest.TestCase):
 
         # Testing the glue force condition
         for surf in glob_mesh.surfaces: surf.zero_contact()
+        glob_mesh.contact_pairs = None
 
         self.assertEqual(glob_mesh.glue_increments(dt), 24)
 
+        # noinspection PyTypeChecker
         slave_force = [glob_mesh.nodes[i[1]].contact_force for i in glob_mesh.contact_pairs]
         patch_force = [glob_mesh.nodes[i].contact_force for i in all_patch_nodes]
 

@@ -878,7 +878,7 @@ class Element:
 
 
 class GlobalMesh:
-    def __init__(self, *MeshBodies, bs=0.1, master_patches=None):
+    def __init__(self, *MeshBodies, bs=0.1, master_patches=None, slave_nodes=None):
         """
         :param MeshBodies: MeshBody; The mesh body objects that make up the global contact check.
         :param bs: float; The bucket size of the mesh. This should be determined from the smallest master surface
@@ -886,6 +886,8 @@ class GlobalMesh:
         :param master_patches: list; A list of integers corresponding to master patch IDs that are used for the contact
                                analysis. No nodes will be able to penetrate these patches. If this is None, then all the
                                external surfaces will be considered.
+        :param slave_nodes: list; An integer list of slave node IDs that get paired to the master patches. Only the bank
+                            of slave nodes will be considered.
 
         Additional Instance Variables
         -----------------------------
@@ -954,6 +956,14 @@ class GlobalMesh:
             for surface, elements in mesh.get_element_by_surf.items():
                 self.get_element_by_surf[surface] = elements
 
+        self.get_patches_by_node = dict()  # {0: [0, 1, 2], 1: [3, 4, 5], ...}
+        for patch in self.surfaces:
+            for node in patch.nodes:
+                if self.get_patches_by_node.get(node.label):
+                    self.get_patches_by_node[node.label].append(patch.label)
+                else:
+                    self.get_patches_by_node[node.label] = [patch.label]
+
         self.x_max, self.y_max, self.z_max = None, None, None
         self.x_min, self.y_min, self.z_min = None, None, None
 
@@ -967,6 +977,7 @@ class GlobalMesh:
         self.nbox, self.lbox, self.npoint, self.nsort = None, None, None, None
 
         self.master_patches = master_patches if master_patches else np.where(self.surface_count == 1)[0]
+        self.slave_nodes = slave_nodes
         self.contact_pairs = None
 
         self.sort()
@@ -1148,7 +1159,7 @@ class GlobalMesh:
 
             fc_list.clear()
 
-            for pair in self.contact_pairs:
+            for i, pair in enumerate(self.contact_pairs):
                 surface_id, node_id, (xi, eta, del_tc), N, _ = pair
                 patch: Surface = self.surfaces[surface_id]
                 node: Node = self.nodes[node_id]
@@ -1158,7 +1169,9 @@ class GlobalMesh:
                 # This part needs to change for the fierro implementation. The guess should be based on the previous
                 # contact solution.
                 guess = (xi, eta, patch.get_fc_guess(node, N, dt, phi_k))
-                [(_, _, fc)] = patch.normal_increment([node], [guess], [N], dt, tol=tol, max_iter=max_iter)
+                [(xi, eta, fc)] = patch.normal_increment([node], [guess], [N], dt, tol=tol, max_iter=max_iter)
+                # N = patch.get_normal(np.array([xi, eta]), dt)  # It's better to keep the normal direction the same.
+                self.contact_pairs[i] = (surface_id, node_id, (xi, eta, del_tc), N, _)
                 fc_list.append(fc)
 
         # noinspection PyUnboundLocalVariable
