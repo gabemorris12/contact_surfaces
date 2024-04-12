@@ -34,10 +34,10 @@ mesh2_points = np.float64([
 ])
 
 mesh3_points = np.float64([
-    [-0.25, 0, 2.5],
-    [-0.25, 1, 2.5],
-    [-0.25, 1, 3.5],
-    [-0.25, 0, 3.5],
+    [-0.5, 0, 2.5],
+    [-0.5, 1, 2.5],
+    [-0.5, 1, 3.5],
+    [-0.5, 0, 3.5],
     [0.25, 0, 2.5],
     [0.25, 1, 2.5],
     [0.25, 1, 3.5],
@@ -113,6 +113,9 @@ for mesh in glob_mesh.mesh_bodies:
     for surf in mesh.surfaces:
         surf.project_surface(ax2, 0, N=2, ls='-', color=mesh.color, alpha=1)
         surf.project_surface(ax3, dt, N=2, ls='-', color=mesh.color, alpha=1)
+
+        centroid = np.mean(surf.points, axis=0)
+        ax2.text(*centroid, str(surf.label), color=mesh.color)
 
 ax2.set_aspect('equal')
 ax3.set_aspect('equal')

@@ -190,7 +190,8 @@ class Surface:
         self.dir = np.cross(vecs[0], vecs[1])
         self.ref_plane = None
 
-        # Assume that the order of the nodes are always pointing outward
+        # Assume that the order of the nodes are always pointing outward and linear hex only. For higher order elements,
+        # needs to change.
         self.xi_p, self.eta_p = np.array([-1, 1, 1, -1], dtype=np.float64), np.array([-1, -1, 1, 1], dtype=np.float64)
 
     def reverse_dir(self):
@@ -788,7 +789,8 @@ class Surface:
         """
         for node in self.nodes: node.zero_contact()
 
-    def physical_to_ref(self, point: np.ndarray, del_t: float, guess=np.float64([0, 0]), tol=1e-12, max_iter=30):
+    def physical_to_ref(self, point: np.ndarray, del_t: float, guess=np.float64([0, 0]), tol=1e-12, max_iter=30,
+                        _omit=2):
         """
         Converts a physical point to a reference point on the surface. This is only valid if the point is on the
         surface.
@@ -798,28 +800,38 @@ class Surface:
         :param guess: np.array; The initial guess for the Newton-Raphson scheme.
         :param tol: float; The tolerance for the Newton-Raphson scheme.
         :param max_iter: int; The maximum number of iterations for the Newton-Raphson scheme.
+        :param _omit: int; The dimension to omit. Only two equations are need, so only two dimensions are needed to
+                      solve for the reference point. If the wrong dimensions are chosen, then the solution will result
+                      in a singularity.
         :return: tuple; (xi, eta) coordinate and k iterations.
         """
+        index = np.arange(3)
+        i = index[index != _omit]
 
         sol = guess
-        assert point.shape == (2,), 'The point must be a 2D array.'
 
-        A = self.construct_position_basis(del_t)[:2, :]
+        A = self.construct_position_basis(del_t)[i, :]
+        p = point[i]
 
         for k in range(max_iter):
 
             xi, eta = sol
             phi_k_arr = phi_p_2D(xi, eta, self.xi_p, self.eta_p)
-            F = A@phi_k_arr - point
+            F = A@phi_k_arr - p
 
             if np.linalg.norm(F) < tol:
-                return sol, k
+                break
 
             d_phi_d_xi = d_phi_p_2D_d_xi(eta, self.xi_p, self.eta_p)
             d_phi_d_eta = d_phi_p_2D_d_eta(xi, self.xi_p, self.eta_p)
             J0 = A@d_phi_d_xi
             J1 = A@d_phi_d_eta
             J = np.column_stack((J0, J1))
+
+            if np.linalg.det(J) == 0:
+                logger.info(f'Singularity calculated in physical_to_ref for patch {self.label} and point {point}. '
+                            f'This occurs when all points are co-planar. Trying again using difference dimensions.')
+                return self.physical_to_ref(point, del_t, guess=guess, tol=tol, max_iter=max_iter, _omit=_omit - 1)
 
             sol = sol - np.linalg.inv(J)@F
 
@@ -1170,15 +1182,82 @@ class GlobalMesh:
                 if is_hitting and node not in master_nodes and node not in slave_nodes:
                     slave_nodes.append(node)
                     master_nodes.extend([node.label for node in patch_obj.nodes])
-                    N = patch_obj.get_normal(np.array([xi, eta]), del_tc)
+                    ref = np.float64([xi, eta])
+                    if any(np.logical_and(ref >= -1 - tol, ref <= -1 + tol)) or \
+                            any(np.logical_and(ref >= 1 - tol, ref <= 1 + tol)):
+                        node_obj: Node = self.nodes[node]
+                        vel = -(node_obj.vel + node_obj.get_acc()*del_tc)
+
+                        if 0 - tol <= np.linalg.norm(vel) <= 0 + tol:
+                            phi_k = phi_p_2D(xi, eta, patch_obj.xi_p, patch_obj.eta_p)
+                            A = np.transpose(patch_obj.vel_points)
+                            vel = A@phi_k
+
+                        N = self.get_edge_normal(ref, patch_obj, del_tc, vel, tol=tol, max_iter=max_iter)
+                    else:
+                        N = patch_obj.get_normal(np.array([xi, eta]), del_tc)
                     contact_pairs.append((patch, node, (xi, eta, del_tc), N, k))
 
         self.contact_pairs = contact_pairs
 
         return contact_pairs
 
-    def get_edge_normal(self):
-        pass
+    def get_edge_normal(self, ref: np.ndarray, surf: Surface, del_t: float, direction: np.ndarray, tol=1e-12,
+                        max_iter=30):
+        # For linear hex, we have this:
+        # xi_p = [-1, 1, 1, -1]
+        # eta_p = [-1, -1, 1, 1]
+        xi, eta = ref
+        nodes = np.array(surf.nodes, dtype=object)
+
+        # We need to find the nodes that make up the edge or the node at the point.
+        if -1 - tol <= xi <= -1 + tol:
+            xi_index = surf.xi_p == -1
+        elif 1 - tol <= xi <= 1 + tol:
+            xi_index = surf.xi_p == 1
+        else:
+            xi_index = np.full(surf.xi_p.shape, False)
+
+        if -1 - tol <= eta <= -1 + tol:
+            eta_index = surf.eta_p == -1
+        elif 1 - tol <= eta <= 1 + tol:
+            eta_index = surf.eta_p == 1
+        else:
+            eta_index = np.full(surf.eta_p.shape, False)
+
+        if any(xi_index) and any(eta_index):
+            index = np.logical_and(xi_index, eta_index)
+        elif any(xi_index):
+            index = xi_index
+        else:
+            index = eta_index
+
+        node_ids = [node.label for node in nodes[index]]
+
+        # Get the shared patches between the node objects, but ensure that they are only external surfaces.
+        assert len(node_ids) == 2 or len(node_ids) == 1, 'The edge normal must be along an edge.'
+        if len(node_ids) == 2:
+            patches = [self.get_patches_by_node[node_id] for node_id in node_ids]
+            shared_patches = set(patches[0]).intersection(patches[1])
+            patches = [patch for patch in shared_patches if self.surface_count[patch] == 1]
+        else:
+            patches = self.get_patches_by_node[node_ids[0]]
+            patches = [patch for patch in patches if self.surface_count[patch] == 1]
+
+        physical_point = ref_to_physical(ref, surf.construct_position_basis(del_t), surf.xi_p, surf.eta_p)
+        avg = []
+        for patch_id in patches:
+            patch_obj: Surface = self.surfaces[patch_id]
+            # Get the reference point relative to that surface
+            rel_ref, _ = patch_obj.physical_to_ref(physical_point, del_t, tol=tol, max_iter=max_iter)
+            N = patch_obj.get_normal(rel_ref, del_t)
+            if np.dot(N, direction) - tol > 0:
+                avg.append(N)
+        assert avg, 'No normal direction found.'
+        avg = np.mean(avg, axis=0)
+        avg = avg/np.linalg.norm(avg)
+
+        return avg
 
     def normal_increments(self, dt: float, tol=1e-12, max_iter=30):
         """
