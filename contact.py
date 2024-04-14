@@ -1186,14 +1186,24 @@ class GlobalMesh:
                     if any(np.logical_and(ref >= -1 - tol, ref <= -1 + tol)) or \
                             any(np.logical_and(ref >= 1 - tol, ref <= 1 + tol)):
                         node_obj: Node = self.nodes[node]
-                        vel = -(node_obj.vel + node_obj.get_acc()*del_tc)
 
-                        if 0 - tol <= np.linalg.norm(vel) <= 0 + tol:
-                            phi_k = phi_p_2D(xi, eta, patch_obj.xi_p, patch_obj.eta_p)
-                            A = np.transpose(patch_obj.vel_points)
-                            vel = A@phi_k
+                        # Get the velocity of the node
+                        vel_node = node_obj.vel + node_obj.get_acc()*del_tc
 
-                        N = self.get_edge_normal(ref, patch_obj, del_tc, vel, tol=tol, max_iter=max_iter)
+                        # Get the velocity of the contact point
+                        phi_k = phi_p_2D(xi, eta, patch_obj.xi_p, patch_obj.eta_p)
+                        acc_points = np.array([node.get_acc() for node in patch_obj.nodes])
+
+                        A_v = np.transpose(patch_obj.vel_points)
+                        A_a = np.transpose(acc_points)
+
+                        vel_contact_t = A_v@phi_k  # Velocity in the surface at time "t"
+                        acc_contact_t = A_a@phi_k  # Acceleration in the surface at time "t"
+                        vel_contact = vel_contact_t + acc_contact_t*del_tc
+
+                        vel_relative = vel_contact - vel_node
+
+                        N = self.get_edge_normal(ref, patch_obj, del_tc, vel_relative, tol=tol, max_iter=max_iter)
                     else:
                         N = patch_obj.get_normal(np.array([xi, eta]), del_tc)
                     contact_pairs.append((patch, node, (xi, eta, del_tc), N, k))
