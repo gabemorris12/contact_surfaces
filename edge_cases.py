@@ -22,15 +22,15 @@ mesh1_points = np.float64([
     [0.5, 2, 0]
 ])
 
-mesh2_points = np.float64([
-    [-0.25, 0.5, 2],
-    [-0.25, 1.5, 2],
-    [-0.25, 1.5, 3],
-    [-0.25, 0.5, 3],
-    [0.25, 0.5, 2],
-    [0.25, 1.5, 2],
-    [0.25, 1.5, 3],
-    [0.25, 0.5, 3]
+mesh2_points = np.array([
+    [0., 1., 1.85],
+    [0., 2., 1.85],
+    [0., 2., 2.85],
+    [0., 1., 2.85],
+    [0.5, 1., 1.85],
+    [0.5, 2., 1.85],
+    [0.5, 2., 2.85],
+    [0.5, 1., 2.85]
 ])
 
 mesh3_points = np.float64([
@@ -65,12 +65,12 @@ mesh3_cells_dict = {
 
 mesh1 = MeshBody(mesh1_points, mesh1_cells_dict)
 mesh1.color = 'black'
-mesh2 = MeshBody(mesh2_points, mesh2_cells_dict, velocity=np.float64([0, -1, 0]))
+mesh2 = MeshBody(mesh2_points, mesh2_cells_dict, velocity=np.float64([0, -1.5, 0]))
 mesh2.color = 'navy'
 mesh3 = MeshBody(mesh3_points, mesh3_cells_dict, velocity=np.float64([0, 0, -1]))
 mesh3.color = 'seagreen'
-# glob_mesh = GlobalMesh(mesh1, mesh2, bs=0.9, master_patches=[8])
-glob_mesh = GlobalMesh(mesh1, mesh3, bs=0.9, master_patches=[8])
+glob_mesh = GlobalMesh(mesh1, mesh2, bs=0.9, master_patches=None)
+# glob_mesh = GlobalMesh(mesh1, mesh3, bs=0.9, master_patches=None)
 
 print('Contact Pairs:')
 for pair in glob_mesh.get_contact_pairs(dt):

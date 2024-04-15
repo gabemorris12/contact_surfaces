@@ -1028,7 +1028,7 @@ class GlobalMesh:
 
         self.master_patches = master_patches if master_patches else np.where(self.surface_count == 1)[0]
         self.slave_nodes = slave_nodes
-        self.contact_pairs = None
+        self.contact_pairs, self.get_pair_by_node = None, None
 
         self.sort()
 
@@ -1169,6 +1169,7 @@ class GlobalMesh:
         :return: list; A list of tuples where each tuple consists of (surface_id, node_id, (xi, eta, del_tc), iters).
         """
         contact_pairs, master_nodes, slave_nodes = [], [], []
+        get_pair_by_node = {}
         for patch in self.master_patches:
             patch_obj = self.surfaces[patch]
             patch_nodes_used = [node.label in slave_nodes for node in patch_obj.nodes]
@@ -1183,37 +1184,39 @@ class GlobalMesh:
                     slave_nodes.append(node)
                     master_nodes.extend([node.label for node in patch_obj.nodes])
                     ref = np.float64([xi, eta])
-                    if any(np.logical_and(ref >= -1 - tol, ref <= -1 + tol)) or \
-                            any(np.logical_and(ref >= 1 - tol, ref <= 1 + tol)):
-                        node_obj: Node = self.nodes[node]
-
-                        # Get the velocity of the node
-                        vel_node = node_obj.vel + node_obj.get_acc()*del_tc
-
-                        # Get the velocity of the contact point
-                        phi_k = phi_p_2D(xi, eta, patch_obj.xi_p, patch_obj.eta_p)
-                        acc_points = np.array([node.get_acc() for node in patch_obj.nodes])
-
-                        A_v = np.transpose(patch_obj.vel_points)
-                        A_a = np.transpose(acc_points)
-
-                        vel_contact_t = A_v@phi_k  # Velocity in the surface at time "t"
-                        acc_contact_t = A_a@phi_k  # Acceleration in the surface at time "t"
-                        vel_contact = vel_contact_t + acc_contact_t*del_tc
-
-                        vel_relative = vel_contact - vel_node
-
-                        N = self.get_edge_normal(ref, patch_obj, del_tc, vel_relative, tol=tol, max_iter=max_iter)
-                    else:
-                        N = patch_obj.get_normal(np.array([xi, eta]), del_tc)
+                    N = self.get_normal(ref, patch_obj, self.nodes[node], del_tc, tol=tol, max_iter=max_iter)
                     contact_pairs.append((patch, node, (xi, eta, del_tc), N, k))
+                    get_pair_by_node[node] = (patch, (xi, eta, del_tc), N, k)
+                elif is_hitting and node in slave_nodes:
+                    patch_, (xi_, eta_, del_tc_), N_, k_ = get_pair_by_node[node]  # original
+
+                    if del_tc < del_tc_:  # This means that it will intersect another surface before the current pair.
+                        N = self.get_normal(np.float64([xi, eta]), patch_obj, self.nodes[node], del_tc, tol=tol,
+                                            max_iter=max_iter)
+                        contact_pairs.remove((patch_, node, (xi_, eta_, del_tc_), N_, k_))
+                        contact_pairs.append((patch, node, (xi, eta, del_tc), N, k))
+                        get_pair_by_node[node] = (patch, (xi, eta, del_tc), N, k)
 
         self.contact_pairs = contact_pairs
+        self.get_pair_by_node = get_pair_by_node
 
         return contact_pairs
 
     def get_edge_normal(self, ref: np.ndarray, surf: Surface, del_t: float, direction: np.ndarray, tol=1e-12,
                         max_iter=30):
+        """
+        Get the normal vector when the contact point lies on the edge of a patch.
+
+        :param ref: np.array; The reference point.
+        :param surf: Surface; The patch object.
+        :param del_t: float; The desired time for which the normal is getting calculated.
+        :param direction: np.array; Not all normals are valid. Only those normals that are in the direction of the
+                          relative velocity of the contact point and node are valid. This is that relative velocity.
+        :param tol: float; The tolerance for the Newton-Raphson scheme.
+        :param max_iter: int; The maximum number of iterations for the Newton-Raphson scheme.
+        :return: np.array; The unit normal which is the average of the normals that are in the direction of the relative
+                 velocity.
+        """
         # For linear hex, we have this:
         # xi_p = [-1, 1, 1, -1]
         # eta_p = [-1, -1, 1, 1]
@@ -1263,11 +1266,55 @@ class GlobalMesh:
             N = patch_obj.get_normal(rel_ref, del_t)
             if np.dot(N, direction) - tol > 0:
                 avg.append(N)
-        assert avg, 'No normal direction found.'
-        avg = np.mean(avg, axis=0)
-        avg = avg/np.linalg.norm(avg)
+
+        if not avg:
+            avg = surf.get_normal(ref, del_t)
+            logger.warning(f'No normal direction found on edge with patch {surf.label}.')
+        else:
+            avg = np.mean(avg, axis=0)
+            avg = avg/np.linalg.norm(avg)
 
         return avg
+
+    def get_normal(self, ref: np.ndarray, surf: Surface, node: Node, del_t: float, tol=1e-12,
+                   max_iter=30):
+        """
+        Get the normal vector at the reference point on a patch. If the reference point is on an edge, then the normal
+        is returned as described in self.get_edge_normal.
+
+        :param ref: np.array; The reference point.
+        :param surf: Surface; The patch object.
+        :param node: Node; The node object.
+        :param del_t: float; The desired time for which the normal is getting calculated.
+        :param tol: float; The tolerance for the Newton-Raphson scheme.
+        :param max_iter: int; The maximum number of iterations for the Newton-Raphson scheme.
+        :return: np.array; The unit normal vector.
+        """
+
+        xi, eta = ref
+
+        if any(np.logical_and(ref >= -1 - tol, ref <= -1 + tol)) or \
+                any(np.logical_and(ref >= 1 - tol, ref <= 1 + tol)):
+
+            # Get the velocity of the node
+            vel_node = node.vel + node.get_acc()*del_t
+
+            # Get the velocity of the contact point
+            phi_k = phi_p_2D(xi, eta, surf.xi_p, surf.eta_p)
+            acc_points = np.array([node.get_acc() for node in surf.nodes])
+
+            A_v = np.transpose(surf.vel_points)
+            A_a = np.transpose(acc_points)
+
+            vel_contact_t = A_v@phi_k  # Velocity in the surface at time "t"
+            acc_contact_t = A_a@phi_k  # Acceleration in the surface at time "t"
+            vel_contact = vel_contact_t + acc_contact_t*del_t
+
+            vel_relative = vel_contact - vel_node
+
+            return self.get_edge_normal(ref, surf, del_t, vel_relative, tol=tol, max_iter=max_iter)
+        else:
+            return surf.get_normal(np.array([xi, eta]), del_t)
 
     def normal_increments(self, dt: float, tol=1e-12, max_iter=30):
         """
@@ -1290,7 +1337,7 @@ class GlobalMesh:
             fc_list.clear()
 
             for i, pair in enumerate(self.contact_pairs):
-                surface_id, node_id, (xi, eta, del_tc), N, _ = pair
+                surface_id, node_id, (xi, eta, del_tc), N, k = pair
                 patch: Surface = self.surfaces[surface_id]
                 node: Node = self.nodes[node_id]
                 phi_k = phi_p_2D(xi, eta, patch.xi_p, patch.eta_p)
@@ -1301,7 +1348,8 @@ class GlobalMesh:
                 guess = (xi, eta, patch.get_fc_guess(node, N, dt, phi_k))
                 [(xi, eta, fc)] = patch.normal_increment([node], [guess], [N], dt, tol=tol, max_iter=max_iter)
                 # N = patch.get_normal(np.array([xi, eta]), dt)  # It's better to keep the normal direction the same.
-                self.contact_pairs[i] = (surface_id, node_id, (xi, eta, del_tc), N, _)
+                self.contact_pairs[i] = (surface_id, node_id, (xi, eta, del_tc), N, k)
+                self.get_pair_by_node[node_id] = (surface_id, (xi, eta, del_tc), N, k)
                 fc_list.append(fc)
 
         # noinspection PyUnboundLocalVariable
