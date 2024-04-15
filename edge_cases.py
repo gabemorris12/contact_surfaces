@@ -93,7 +93,12 @@ mesh4.color = 'darkorange'
 glob_mesh = GlobalMesh(mesh1, mesh4, bs=0.9, master_patches=None)
 
 print('Contact Pairs:')
-for pair in glob_mesh.get_contact_pairs(dt):
+contact_pairs = glob_mesh.get_contact_pairs(dt)
+# contact_pairs.extend([
+#     (10, 13, (0.0, 1.0, 0), np.array([0., -0.4472135954999579, -0.8944271909999159]), 1),
+#     (10, 17, (1.0, 1.0, 0), np.array([0., -0.4472135954999579, -0.8944271909999159]), 1)
+# ])
+for pair in contact_pairs:
     print(pair)
 
 # Contact detection
@@ -142,5 +147,15 @@ ax3.set_aspect('equal')
 
 print('Contact Pairs After:')
 for pair in glob_mesh.contact_pairs: print(pair)
+
+patch_nodes, slave_nodes = set(), set()
+for pair in glob_mesh.contact_pairs:
+    surf = glob_mesh.surfaces[pair[0]]
+    node = glob_mesh.nodes[pair[1]]
+    patch_nodes.update([node.label for node in surf.nodes])
+    slave_nodes.add(node.label)
+
+print('\nTotal Slave Force:', np.sum([glob_mesh.nodes[i].contact_force for i in slave_nodes], axis=0))
+print('Total Patch Force:', np.sum([glob_mesh.nodes[i].contact_force for i in patch_nodes], axis=0))
 
 plt.show()

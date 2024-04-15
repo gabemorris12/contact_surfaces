@@ -99,6 +99,7 @@ mesh2.alpha = 0.25
 mesh3 = MeshBody(mesh3_points, mesh3_cells_dict, velocity=np.float64([0, 0, 0.75]))
 mesh3.color = 'seagreen'
 mesh3.alpha = 0.25
+# mesh4 = MeshBody(mesh4_points, mesh4_cells_dict, velocity=np.float64([-0.3, -0.499, -0.25]), mass=10)
 mesh4 = MeshBody(mesh4_points, mesh4_cells_dict, velocity=np.float64([0, -0.499, -0.25]), mass=10)
 mesh4.color = 'darkred'
 mesh4.alpha = 0.25
@@ -121,13 +122,13 @@ ax2.set_title(r'At $t + \Delta t$ (Normal)')
 
 for mesh in glob_mesh.mesh_bodies:
     for surf in mesh.surfaces:
-        # x, y, z = np.mean(surf.points, axis=0)
-        # ax1.text(x, y, z, str(surf.label), color=mesh.color)
+        x, y, z = np.mean(surf.points, axis=0)
+        ax1.text(x, y, z, str(surf.label), color=mesh.color)
 
         surf.project_surface(ax1, 0, N=2, ls='-', color=mesh.color, alpha=mesh.alpha)
         surf.project_surface(ax2, dt, N=2, ls='-', color=mesh.color, alpha=mesh.alpha)
 
-# for node in glob_mesh.nodes: ax1.text(*node.pos, str(node.label), color='black')
+for node in glob_mesh.nodes: ax1.text(*node.pos, str(node.label), color='black')
 
 for pair in glob_mesh.contact_pairs:
     print(pair)

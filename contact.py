@@ -398,6 +398,11 @@ class Surface:
             J2 = dt**2/(2*ms)*N - d_A_d_fc@phi_k
             J = np.column_stack((J0, J1, J2))
 
+            if np.linalg.det(J) == 0:
+                logger.warning(f'Singularity calculated in find force increment between patch {self.label} and '
+                               f'node {node.label}. Returning zero force.')
+                return np.float64([sol[0], sol[1], 0]), max_iter - 1
+
             sol = sol - np.linalg.inv(J)@F
 
         # noinspection PyUnboundLocalVariable
@@ -1028,7 +1033,7 @@ class GlobalMesh:
 
         self.master_patches = master_patches if master_patches else np.where(self.surface_count == 1)[0]
         self.slave_nodes = slave_nodes
-        self.contact_pairs, self.get_pair_by_node = None, None
+        self.contact_pairs, self.get_pair_by_node, self.dynamic_pairs = None, None, []
 
         self.sort()
 
@@ -1316,6 +1321,65 @@ class GlobalMesh:
         else:
             return surf.get_normal(np.array([xi, eta]), del_t)
 
+    def get_dynamic_pairs(self, ref: np.ndarray, surf: Surface, node: Node, dt: float, tol=1e-12, max_iter=30):
+        signs = np.sign(ref)
+        ref = np.floor(np.abs(ref) + tol)*signs
+        xi, eta = ref
+        nodes = np.array(surf.nodes, dtype=object)
+
+        # We need to find the nodes that make up the edge or the node at the point.
+        if -1 - tol <= xi <= -1 + tol:
+            xi_index = surf.xi_p == -1
+        elif 1 - tol <= xi <= 1 + tol:
+            xi_index = surf.xi_p == 1
+        else:
+            xi_index = np.full(surf.xi_p.shape, False)
+
+        if -1 - tol <= eta <= -1 + tol:
+            eta_index = surf.eta_p == -1
+        elif 1 - tol <= eta <= 1 + tol:
+            eta_index = surf.eta_p == 1
+        else:
+            eta_index = np.full(surf.eta_p.shape, False)
+
+        if any(xi_index) and any(eta_index):
+            index = np.logical_and(xi_index, eta_index)
+        elif any(xi_index):
+            index = xi_index
+        else:
+            index = eta_index
+
+        node_ids = [node.label for node in nodes[index]]
+
+        # Get the shared patches between the node objects, but ensure that they are only external surfaces.
+        assert len(node_ids) == 2 or len(node_ids) == 1, 'The edge normal must be along an edge.'
+        if len(node_ids) == 2:
+            patches = [self.get_patches_by_node[node_id] for node_id in node_ids]
+            shared_patches = set(patches[0]).intersection(patches[1])
+            patches = [patch for patch in shared_patches if self.surface_count[patch] == 1]
+        else:
+            patches = self.get_patches_by_node[node_ids[0]]
+            patches = [patch for patch in patches if self.surface_count[patch] == 1]
+        patches.remove(surf.label)
+
+        direction = surf.get_normal(ref, dt)
+
+        physical_point = ref_to_physical(ref, surf.construct_position_basis(dt), surf.xi_p, surf.eta_p)
+        dynamic_pairs = []
+
+        for patch_id in patches:
+            patch_obj: Surface = self.surfaces[patch_id]
+            # Get the reference point relative to that surface
+            rel_ref, _ = patch_obj.physical_to_ref(physical_point, dt, tol=tol, max_iter=max_iter)
+            N = patch_obj.get_normal(rel_ref, dt)
+            if np.dot(N, direction) - tol > 0:
+                dynamic_pairs.append((patch_id, node.label, (rel_ref[0], rel_ref[1], None), N, None))
+
+        if not dynamic_pairs:
+            logger.warning(f'No surrounding patches found for node {node.label} on surface {surf.label}.')
+
+        return dynamic_pairs
+
     def normal_increments(self, dt: float, tol=1e-12, max_iter=30):
         """
         Find the normal force across all patches and nodes in contact until there is no penetration.
@@ -1347,6 +1411,18 @@ class GlobalMesh:
                 # contact solution.
                 guess = (xi, eta, patch.get_fc_guess(node, N, dt, phi_k))
                 [(xi, eta, fc)] = patch.normal_increment([node], [guess], [N], dt, tol=tol, max_iter=max_iter)
+
+                ref = np.array([xi, eta])
+                if not all(np.logical_and(ref >= -1 - tol, ref <= 1 + tol)):
+                    dynamic_pairs = self.get_dynamic_pairs(ref, patch, node, dt, tol=tol, max_iter=max_iter)
+
+                    for dynamic_pair in dynamic_pairs:
+                        new_patch, _, (new_xi, new_eta, _), new_N, _ = dynamic_pair
+
+                        if (new_patch, node.label) not in self.dynamic_pairs:
+                            self.dynamic_pairs.append((new_patch, node.label))
+                            # self.contact_pairs.append((new_patch, node.label, (new_xi, new_eta, None), new_N, None))
+
                 # N = patch.get_normal(np.array([xi, eta]), dt)  # It's better to keep the normal direction the same.
                 self.contact_pairs[i] = (surface_id, node_id, (xi, eta, del_tc), N, k)
                 self.get_pair_by_node[node_id] = (surface_id, (xi, eta, del_tc), N, k)
