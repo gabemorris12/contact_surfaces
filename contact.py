@@ -1189,18 +1189,24 @@ class GlobalMesh:
                     slave_nodes.append(node)
                     master_nodes.extend([node.label for node in patch_obj.nodes])
                     ref = np.float64([xi, eta])
-                    N = self.get_normal(ref, patch_obj, self.nodes[node], del_tc, tol=tol, max_iter=max_iter)
+                    # N = self.get_normal(ref, patch_obj, self.nodes[node], del_tc, tol=tol, max_iter=max_iter)
+                    N = patch_obj.get_normal(ref, del_tc)
                     contact_pairs.append((patch, node, (xi, eta, del_tc), N, k))
                     get_pair_by_node[node] = (patch, (xi, eta, del_tc), N, k)
                 elif is_hitting and node in slave_nodes:
                     patch_, (xi_, eta_, del_tc_), N_, k_ = get_pair_by_node[node]  # original
 
                     if del_tc < del_tc_:  # This means that it will intersect another surface before the current pair.
-                        N = self.get_normal(np.float64([xi, eta]), patch_obj, self.nodes[node], del_tc, tol=tol,
-                                            max_iter=max_iter)
+                        # N = self.get_normal(np.float64([xi, eta]), patch_obj, self.nodes[node], del_tc, tol=tol,
+                        #                     max_iter=max_iter)
+                        N = patch_obj.get_normal(np.float64([xi, eta]), del_tc)
                         contact_pairs.remove((patch_, node, (xi_, eta_, del_tc_), N_, k_))
                         contact_pairs.append((patch, node, (xi, eta, del_tc), N, k))
                         get_pair_by_node[node] = (patch, (xi, eta, del_tc), N, k)
+                    elif del_tc_ - tol <= del_tc <= del_tc_ + tol:  # This means we are at an edge.
+                        N = patch_obj.get_normal(np.float64([xi, eta]), del_tc)
+                        contact_pairs.append((patch, node, (xi, eta, del_tc), N, k_))
+                        get_pair_by_node[node] = (patch, (xi, eta, del_tc), N, k_)
 
         self.contact_pairs = contact_pairs
         self.get_pair_by_node = get_pair_by_node
