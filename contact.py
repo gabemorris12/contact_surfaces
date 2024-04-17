@@ -1189,31 +1189,64 @@ class GlobalMesh:
                     slave_nodes.append(node)
                     master_nodes.extend([node.label for node in patch_obj.nodes])
                     ref = np.float64([xi, eta])
-                    # N = self.get_normal(ref, patch_obj, self.nodes[node], del_tc, tol=tol, max_iter=max_iter)
+                    # It may be better to get the normal direction based off the time at dt. Also, it might be better
+                    # to get this based off the minimum distance.
                     N = patch_obj.get_normal(ref, del_tc)
                     contact_pairs.append((patch, node, (xi, eta, del_tc), N, k))
                     get_pair_by_node[node] = (patch, (xi, eta, del_tc), N, k)
                 elif is_hitting and node in slave_nodes:
                     patch_, (xi_, eta_, del_tc_), N_, k_ = get_pair_by_node[node]  # original
 
-                    if del_tc < del_tc_:  # This means that it will intersect another surface before the current pair.
-                        # N = self.get_normal(np.float64([xi, eta]), patch_obj, self.nodes[node], del_tc, tol=tol,
-                        #                     max_iter=max_iter)
+                    if del_tc + tol < del_tc_:  # This means that it will intersect another surface before the current pair.
                         N = patch_obj.get_normal(np.float64([xi, eta]), del_tc)
                         contact_pairs.remove((patch_, node, (xi_, eta_, del_tc_), N_, k_))
                         contact_pairs.append((patch, node, (xi, eta, del_tc), N, k))
                         get_pair_by_node[node] = (patch, (xi, eta, del_tc), N, k)
                     elif del_tc_ - tol <= del_tc <= del_tc_ + tol:  # This means we are at an edge.
                         N = patch_obj.get_normal(np.float64([xi, eta]), del_tc)
-                        contact_pairs.append((patch, node, (xi, eta, del_tc), N, k_))
-                        get_pair_by_node[node] = (patch, (xi, eta, del_tc), N, k_)
+                        pair = self.get_edge_pair((patch, node, (xi, eta, del_tc), N, k),
+                                                  (patch_, node, (xi_, eta_, del_tc_), N_, k_), del_tc)
+                        if pair[0] != patch_:
+                            contact_pairs.remove((patch_, node, (xi_, eta_, del_tc_), N_, k_))
+                            contact_pairs.append(pair)
+                            get_pair_by_node[node] = (pair[0], *pair[2:])
+                    else:
+                        raise RuntimeError('This should not happen.')
 
         self.contact_pairs = contact_pairs
         self.get_pair_by_node = get_pair_by_node
 
         return contact_pairs
 
-    def get_edge_normal(self, ref: np.ndarray, surf: Surface, del_t: float, direction: np.ndarray, tol=1e-12,
+    def get_edge_pair(self, pair1: tuple, pair2: tuple, del_t: float):
+        """
+        If a contact point is found on an edge, then the better patch option needs to be determined. This function
+        will return the better option based on the normal of the node.
+
+        :param pair1: tuple; The first contact pair information.
+        :param pair2: tuple; The second contact pair information.
+        :param del_t: float; The time at which the normals are being compared.
+        :return: tuple; pair1 or pair2
+        """
+        patch1, node1, (xi1, eta1, del_tc1), N1, k1 = pair1
+        patch2, node2, (_, _, _), N2, k2 = pair2
+
+        assert node1 == node2, 'The nodes must be the same.'
+
+        node = self.nodes[node1]
+        N = self.get_node_normal(node, del_t)
+
+        if np.dot(N, N1) < np.dot(N, N2):
+            return pair1
+        elif np.dot(N, N1) > np.dot(N, N2):
+            return pair2
+        else:
+            # Return the first patch with the normal being the average
+            N_new = (N1 + N2)/2
+            N_new = N_new/np.linalg.norm(N_new)
+            return patch1, node1, (xi1, eta1, del_tc1), N_new, k1
+
+    def get_edge_normal(self, ref: np.ndarray, surf: Surface, del_t: float, tol=1e-12,
                         max_iter=30):
         """
         Get the normal vector when the contact point lies on the edge of a patch.
@@ -1221,8 +1254,6 @@ class GlobalMesh:
         :param ref: np.array; The reference point.
         :param surf: Surface; The patch object.
         :param del_t: float; The desired time for which the normal is getting calculated.
-        :param direction: np.array; Not all normals are valid. Only those normals that are in the direction of the
-                          relative velocity of the contact point and node are valid. This is that relative velocity.
         :param tol: float; The tolerance for the Newton-Raphson scheme.
         :param max_iter: int; The maximum number of iterations for the Newton-Raphson scheme.
         :return: np.array; The unit normal which is the average of the normals that are in the direction of the relative
@@ -1275,8 +1306,7 @@ class GlobalMesh:
             # Get the reference point relative to that surface
             rel_ref, _ = patch_obj.physical_to_ref(physical_point, del_t, tol=tol, max_iter=max_iter)
             N = patch_obj.get_normal(rel_ref, del_t)
-            if np.dot(N, direction) - tol > 0:
-                avg.append(N)
+            avg.append(N)
 
         if not avg:
             avg = surf.get_normal(ref, del_t)
@@ -1287,45 +1317,32 @@ class GlobalMesh:
 
         return avg
 
-    def get_normal(self, ref: np.ndarray, surf: Surface, node: Node, del_t: float, tol=1e-12,
-                   max_iter=30):
+    def get_node_normal(self, node: Node, del_t: float):
         """
-        Get the normal vector at the reference point on a patch. If the reference point is on an edge, then the normal
-        is returned as described in self.get_edge_normal.
+        Find the surface normal for a node. Only the external surfaces are considered.
 
-        :param ref: np.array; The reference point.
-        :param surf: Surface; The patch object.
         :param node: Node; The node object.
         :param del_t: float; The desired time for which the normal is getting calculated.
-        :param tol: float; The tolerance for the Newton-Raphson scheme.
-        :param max_iter: int; The maximum number of iterations for the Newton-Raphson scheme.
-        :return: np.array; The unit normal vector.
+        :return: np.array; The unit normal vector which is the average of all the patch normals.
         """
+        patches = self.get_patches_by_node[node.label]
+        patches = [patch for patch in patches if self.surface_count[patch] == 1]
 
-        xi, eta = ref
+        normals = []
+        for patch in patches:
+            surf = self.surfaces[patch]
+            ref = None
 
-        if any(np.logical_and(ref >= -1 - tol, ref <= -1 + tol)) or \
-                any(np.logical_and(ref >= 1 - tol, ref <= 1 + tol)):
+            for i, node_ in enumerate(surf.nodes):
+                if node_.label == node.label:
+                    ref = np.array([surf.xi_p[i], surf.eta_p[i]])
+                    break
 
-            # Get the velocity of the node
-            vel_node = node.vel + node.get_acc()*del_t
+            normals.append(surf.get_normal(ref, del_t))
 
-            # Get the velocity of the contact point
-            phi_k = phi_p_2D(xi, eta, surf.xi_p, surf.eta_p)
-            acc_points = np.array([node.get_acc() for node in surf.nodes])
+        N = np.mean(normals, axis=0)
 
-            A_v = np.transpose(surf.vel_points)
-            A_a = np.transpose(acc_points)
-
-            vel_contact_t = A_v@phi_k  # Velocity in the surface at time "t"
-            acc_contact_t = A_a@phi_k  # Acceleration in the surface at time "t"
-            vel_contact = vel_contact_t + acc_contact_t*del_t
-
-            vel_relative = vel_contact - vel_node
-
-            return self.get_edge_normal(ref, surf, del_t, vel_relative, tol=tol, max_iter=max_iter)
-        else:
-            return surf.get_normal(np.array([xi, eta]), del_t)
+        return N/np.linalg.norm(N)
 
     def get_dynamic_pairs(self, ref: np.ndarray, surf: Surface, node: Node, dt: float, tol=1e-12, max_iter=30):
         signs = np.sign(ref)
@@ -1451,10 +1468,10 @@ class GlobalMesh:
             self.get_contact_pairs(dt, tol=tol, max_iter=max_iter)
 
         g_list = []
-        for k in range(max_iter):
+        for iters in range(max_iter):
 
             if np.linalg.norm(g_list) <= tol and g_list:
-                return k
+                return iters
 
             g_list.clear()
 
@@ -1468,7 +1485,7 @@ class GlobalMesh:
                 g_list.append(np.linalg.norm([Gx, Gy, Gz]))
 
         # noinspection PyUnboundLocalVariable
-        return k
+        return iters
 
 
 def find_time(patch_nodes: list[Node], slave_node: Node, dt: float) -> float:

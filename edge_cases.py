@@ -55,6 +55,21 @@ mesh4_points = np.float64([
     [0.5, -0.6527864045, -0.444427191]
 ])
 
+mesh5_points = np.float64([
+    [-0.5, -1, 2.5],
+    [-0.5, 0, 2.5],
+    [-0.5, 1, 2.5],
+    [-0.5, 1, 3.5],
+    [-0.5, 0, 3.5],
+    [-0.5, -1, 3.5],
+    [0.5, -1, 2.5],
+    [0.5, 0, 2.5],
+    [0.5, 1, 2.5],
+    [0.5, 1, 3.5],
+    [0.5, 0, 3.5],
+    [0.5, -1, 3.5]
+])
+
 mesh1_cells_dict = {
     'hexahedron': np.array([
         [0, 1, 4, 3, 6, 7, 10, 9],
@@ -80,6 +95,13 @@ mesh4_cells_dict = {
     ])
 }
 
+mesh5_cells_dict = {
+    'hexahedron': np.array([
+        [0, 1, 4, 5, 6, 7, 10, 11],
+        [1, 2, 3, 4, 7, 8, 9, 10]
+    ])
+}
+
 mesh1 = MeshBody(mesh1_points, mesh1_cells_dict)
 mesh1.color = 'black'
 mesh2 = MeshBody(mesh2_points, mesh2_cells_dict, velocity=np.float64([0, -1.5, 0]))
@@ -88,9 +110,12 @@ mesh3 = MeshBody(mesh3_points, mesh3_cells_dict, velocity=np.float64([0, 0, -1])
 mesh3.color = 'seagreen'
 mesh4 = MeshBody(mesh4_points, mesh4_cells_dict, velocity=np.float64([0, 0, 1]))
 mesh4.color = 'darkorange'
+mesh5 = MeshBody(mesh5_points, mesh5_cells_dict, velocity=np.float64([0, 0, -1]))
+mesh5.color = 'purple'
 # glob_mesh = GlobalMesh(mesh1, mesh2, bs=0.9, master_patches=None)
-# glob_mesh = GlobalMesh(mesh1, mesh3, bs=0.9, master_patches=None)
-glob_mesh = GlobalMesh(mesh1, mesh4, bs=0.9, master_patches=None)
+glob_mesh = GlobalMesh(mesh1, mesh3, bs=0.9, master_patches=None)
+# glob_mesh = GlobalMesh(mesh1, mesh4, bs=0.9, master_patches=None)
+# glob_mesh = GlobalMesh(mesh1, mesh5, bs=0.9, master_patches=None)
 
 print('Contact Pairs:')
 contact_pairs = glob_mesh.get_contact_pairs(dt)

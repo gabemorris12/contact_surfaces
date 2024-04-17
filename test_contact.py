@@ -267,14 +267,14 @@ class TestContact(unittest.TestCase):
         contact_pairs = TestContact.global_mesh.get_contact_pairs(TestContact.dt1)
         supposed_to_be = [
             (23, 27),
-            (23, 35),
-            (23, 39),
-            (23, 48),
             (27, 31),
-            (27, 41),
+            (27, 39),
             (32, 28),
-            (32, 40),
-            (35, 32)
+            (32, 35),
+            (35, 32),
+            (35, 40),
+            (35, 41),
+            (35, 48)
         ]
         self.assertListEqual([pair[:2] for pair in contact_pairs], supposed_to_be)
 

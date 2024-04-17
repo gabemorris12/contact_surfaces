@@ -26,6 +26,17 @@ mesh2_data = np.array([
     [0.25, 0, 1.5]
 ])
 
+mesh3_data = np.array([
+    [-0.5, 0, 1],
+    [-0.5, 0.5, 1],
+    [-0.5, 0.5, 1.5],
+    [-0.5, 0, 1.5],
+    [0, 0, 1],
+    [0, 0.5, 1],
+    [0, 0.5, 1.5],
+    [0, 0, 1.5]
+])
+
 mesh1_cells_dict = {
     'hexahedron': np.array([
         [0, 1, 2, 3, 4, 5, 6, 7]
@@ -37,16 +48,22 @@ mesh2_cells_dict = {
         [0, 1, 2, 3, 4, 5, 6, 7]
     ])
 }
+mesh3_cells_dict = {
+    'hexahedron': np.array([
+        [0, 1, 2, 3, 4, 5, 6, 7]
+    ])
+}
 
 mesh1 = MeshBody(mesh1_data, mesh1_cells_dict)
 mesh1.color = 'black'
-mesh2 = MeshBody(mesh2_data, mesh2_cells_dict, velocity=np.float64([0, -.25, -0.499]))
+mesh2 = MeshBody(mesh2_data, mesh2_cells_dict, velocity=np.float64([0, -0.25, -0.499]))
 mesh2.color = 'navy'
-glob_mesh = GlobalMesh(mesh1, mesh2, bs=0.9, master_patches=None)
+mesh3 = MeshBody(mesh3_data, mesh3_cells_dict, velocity=np.float64([-0.1, 0.25, -0.499]))
+mesh3.color = 'seagreen'
+# glob_mesh = GlobalMesh(mesh1, mesh2, bs=0.9, master_patches=None)
+glob_mesh = GlobalMesh(mesh1, mesh3, bs=0.9, master_patches=None)
 
 contact_pairs = glob_mesh.get_contact_pairs(dt)
-# glob_mesh.contact_pairs.pop(0)
-# glob_mesh.contact_pairs.pop(0)
 print('Contact Pairs Before:')
 for pair in contact_pairs: print(pair, '---> Node Force:', glob_mesh.nodes[pair[1]].contact_force)
 print()
