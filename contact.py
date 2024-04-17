@@ -1399,10 +1399,10 @@ class GlobalMesh:
             self.get_contact_pairs(dt, tol=tol, max_iter=max_iter)
 
         fc_list = []
-        for k in range(max_iter):
+        for iters in range(max_iter):
 
             if np.linalg.norm(fc_list) <= tol and fc_list:
-                return k
+                return iters
 
             fc_list.clear()
 
@@ -1435,7 +1435,7 @@ class GlobalMesh:
                 fc_list.append(fc)
 
         # noinspection PyUnboundLocalVariable
-        return k
+        return iters
 
     def glue_increments(self, dt: float, tol=1e-12, max_iter=30):
         """
