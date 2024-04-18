@@ -113,8 +113,8 @@ mesh4.color = 'darkorange'
 mesh5 = MeshBody(mesh5_points, mesh5_cells_dict, velocity=np.float64([0, 0, -1]))
 mesh5.color = 'purple'
 # glob_mesh = GlobalMesh(mesh1, mesh2, bs=0.9, master_patches=None)
-glob_mesh = GlobalMesh(mesh1, mesh3, bs=0.9, master_patches=None)
-# glob_mesh = GlobalMesh(mesh1, mesh4, bs=0.9, master_patches=None)
+# glob_mesh = GlobalMesh(mesh1, mesh3, bs=0.9, master_patches=None)
+glob_mesh = GlobalMesh(mesh1, mesh4, bs=0.9, master_patches=None)
 # glob_mesh = GlobalMesh(mesh1, mesh5, bs=0.9, master_patches=None)
 
 print('Contact Pairs:')
