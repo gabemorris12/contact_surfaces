@@ -1356,7 +1356,13 @@ class GlobalMesh:
 
     def get_dynamic_pair(self, ref: np.ndarray, surf: Surface, node: Node, dt: float, tol=1e-12, max_iter=30):
         signs = np.sign(ref)
+        o_ref = np.copy(ref)  # original reference
+        # Something here might need to be adjusted to where something in between -1 and 1 is preserved. This operation
+        # brings the in between to zero, so the normals are going to be calculated at (0, 1), when a more accurate
+        # representation would be to preserve it and have (0.554, 1).
         ref = np.floor(np.abs(ref) + tol)*signs
+        # The sign function ensures that only adjacent patches are considered. It is assumed that a node will not move
+        # more than the distance of an element.
         xi, eta = np.sign(ref)
         nodes = np.array(surf.nodes, dtype=object)
 
@@ -1402,20 +1408,17 @@ class GlobalMesh:
             patch_obj: Surface = self.surfaces[patch]
             # Get the reference point relative to the new patch
             rel_ref, _ = patch_obj.physical_to_ref(physical_point, dt, tol=tol, max_iter=max_iter)
-            N = patch_obj.get_normal(rel_ref, dt)
+
+            if not is_concave(surf, patch_obj, ref, dt):
+                # For the convex surface, return the adjacent surface no matter what.
+                N = patch_obj.get_normal(rel_ref, dt)
+            else:
+                return surf.label, node.label, (o_ref[0], o_ref[1], None), surf.get_normal(o_ref, dt), None
         else:
             # Crossing a corner
             # We choose the patch that has the most opposing normal
             corner_node_patches = self.get_patches_by_node[corner_node]
-            # other_patches = [self.get_patches_by_node[node_id] for node_id in node_ids if node_id != corner_node]
-            # difference_patches = set(corner_node_patches).difference(*other_patches)
-            # patches = [patch for patch in difference_patches if self.surface_count[patch] == 1]
-            #
-            # if not patches:  # This occurs if the node slides across an outer corner
-            #     return None
-            #
-            # patch = patches[0]
-            if len(corner_node_patches) == 3:
+            if len(corner_node_patches) == 3:  # Happens when it's the outer corner of the corner element
                 return None
             other_patches = [patch for patch in corner_node_patches if self.surface_count[patch] == 1 and
                              patch != surf.label]
@@ -1425,12 +1428,15 @@ class GlobalMesh:
                                 patch3.physical_to_ref(physical_point, dt, tol=tol, max_iter=max_iter)[0])
             N1, N2, N3 = (patch1.get_normal(ref1, dt), patch2.get_normal(ref2, dt), patch3.get_normal(ref3, dt))
             pair1, pair2, pair3 = (patch1.label, node.label, (ref1[0], ref1[1], None), N1, None), \
-                                  (patch2.label, node.label, (ref2[0], ref2[1], None), N2, None), \
-                                  (patch3.label, node.label, (ref3[0], ref3[1], None), N3, None)
+                (patch2.label, node.label, (ref2[0], ref2[1], None), N2, None), \
+                (patch3.label, node.label, (ref3[0], ref3[1], None), N3, None)
             first = self.get_edge_pair(pair1, pair2, dt)
             last = self.get_edge_pair(first, pair3, dt)
-            patch, _, ref, N, _ = last
-            rel_ref = ref[:2]
+            patch, _, new_ref, N, _ = last
+            rel_ref = new_ref[:2]
+
+            if is_concave(surf, self.surfaces[patch], ref, dt):
+                return surf.label, node.label, (o_ref[0], o_ref[1], None), surf.get_normal(o_ref, dt), None
 
         return patch, node.label, (rel_ref[0], rel_ref[1], None), N, None
 
@@ -1464,7 +1470,8 @@ class GlobalMesh:
                 # This part needs to change for the fierro implementation. The guess should be based on the previous
                 # contact solution.
                 guess = (xi, eta, patch.get_fc_guess(node, N, dt, phi_k))
-                [(xi, eta, fc)] = patch.normal_increment([node], [guess], [N], dt, tol=tol, max_iter=max_iter, ignore_off_edge=True)
+                [(xi, eta, fc)] = patch.normal_increment([node], [guess], [N], dt, tol=tol,
+                                                         max_iter=max_iter, ignore_off_edge=True)
 
                 ref = np.array([xi, eta])
                 # if not all(np.logical_and(ref >= -1 - tol, ref <= 1 + tol)) and fc:
@@ -1662,6 +1669,57 @@ def ref_to_physical(ref, A, xi_p, eta_p):
     xi, eta = ref
     phi_p_arr = phi_p_2D(xi, eta, xi_p, eta_p)
     return A@phi_p_arr
+
+
+def is_concave(patch1: Surface, patch2: Surface, ref: np.ndarray, del_t: float, tol=1e-12):
+    """
+    Determine if the edge between two patches is concave. This only works if the point is on an edge, not a point.
+    A perfectly flat surface is considered convex and will return false.
+
+    :param patch1: Surface; The first patch object.
+    :param patch2: Surface; The second patch object.
+    :param ref: np.array; The reference point on the first patch. This is where concavity is determined.
+    :param del_t: float; The time at which the concavity is determined.
+    :param tol: float; The tolerance for ensuring that the point is on an edge.
+    :return: bool; True if the edge is concave.
+    """
+    assert any(np.logical_and(-1 - tol <= ref, ref <= -1 + tol)) or \
+           any(np.logical_and(1 - tol <= ref, ref <= 1 + tol)), 'The point must be on an edge.'
+
+    # Compute the average normal.
+    A1 = patch1.construct_position_basis(del_t)
+    physical_point = ref_to_physical(ref, A1, patch1.xi_p, patch1.eta_p)
+    other_ref = patch2.physical_to_ref(physical_point, del_t, tol=tol)[0]
+    N1 = patch1.get_normal(ref, del_t)
+    N2 = patch2.get_normal(other_ref, del_t)
+    N = (N1 + N2)/2
+    N = N/np.linalg.norm(N)
+
+    # Compute partial derivatives. If the dot product between any of the partial derivatives and the normal is negative,
+    # then the edge is concave.
+    A2 = patch2.construct_position_basis(del_t)
+    c1 = ref_to_physical(np.float64([0, 0]), A1, patch1.xi_p, patch1.eta_p)
+    c2 = ref_to_physical(np.float64([0, 0]), A2, patch2.xi_p, patch2.eta_p)
+    xi1, eta1 = ref
+    xi2, eta2 = other_ref
+    d_phi_d_xi1 = d_phi_p_2D_d_xi(eta1, patch1.xi_p, patch1.eta_p)
+    d_phi_d_eta1 = d_phi_p_2D_d_eta(xi1, patch1.xi_p, patch1.eta_p)
+    d_phi_d_xi2 = d_phi_p_2D_d_xi(eta2, patch2.xi_p, patch2.eta_p)
+    d_phi_d_eta2 = d_phi_p_2D_d_eta(xi2, patch2.xi_p, patch2.eta_p)
+    d_phi_d_xi1 = A1@d_phi_d_xi1
+    d_phi_d_eta1 = A1@d_phi_d_eta1
+    d_phi_d_xi2 = A2@d_phi_d_xi2
+    d_phi_d_eta2 = A2@d_phi_d_eta2
+
+    derivatives = [d_phi_d_xi1, d_phi_d_eta1, d_phi_d_xi2, d_phi_d_eta2]
+    for c, der in zip((c1, c1, c2, c2), derivatives):
+        rel = c - physical_point
+        if np.dot(der, rel) < 0:
+            der = -der
+
+        if np.dot(der, N) + tol < 0:
+            return True
+    return False
 
 
 # This class is for a better looking 3D arrow in plots.

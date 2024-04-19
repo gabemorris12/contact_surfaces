@@ -24,6 +24,26 @@ concave_edge_data = np.float64([
     [-1, 0, 1],
     [-1, -1, 1]
 ])
+convex_edge_data = np.float64([
+    [1, -1, 0],
+    [1, 0, 0],
+    [1, 1, 0],
+    [1, 1, 1],
+    [1, 0, 1],
+    [1, -1, 1],
+    [0, -1, 0],
+    [0, 0, 0],
+    [0, 1, 0],
+    [0, 1, 1],
+    [0, 0, 1.2],
+    [0, -1, 1],
+    [-1, -1, 0],
+    [-1, 0, 0],
+    [-1, 1, 0],
+    [-1, 1, 1],
+    [-1, 0, 1],
+    [-1, -1, 1]
+])
 
 mesh2_data = np.float64([
     [-0.25, 0.25, 1],
@@ -36,7 +56,26 @@ mesh2_data = np.float64([
     [-0.75, 0.25, 1.5]
 ])
 
+mesh3_data = np.float64([
+    [-0.25, 0.25, 1.2],
+    [-0.25, 0.75, 1.2],
+    [-0.25, 0.75, 1.7],
+    [-0.25, 0.25, 1.7],
+    [-0.75, 0.25, 1.2],
+    [-0.75, 0.75, 1.2],
+    [-0.75, 0.75, 1.7],
+    [-0.75, 0.25, 1.7]
+])
+
 concave_edge_cells_dict = {
+    'hexahedron': np.array([
+        [0, 1, 4, 5, 6, 7, 10, 11],
+        [1, 2, 3, 4, 7, 8, 9, 10],
+        [6, 7, 10, 11, 12, 13, 16, 17],
+        [7, 8, 9, 10, 13, 14, 15, 16]
+    ])
+}
+convex_edge_cells_dict = {
     'hexahedron': np.array([
         [0, 1, 4, 5, 6, 7, 10, 11],
         [1, 2, 3, 4, 7, 8, 9, 10],
@@ -51,11 +90,22 @@ mesh2_cells_dict = {
     ])
 }
 
+mesh3_cells_dict = {
+    'hexahedron': np.array([
+        [0, 1, 2, 3, 4, 5, 6, 7]
+    ])
+}
+
 concave_edge = MeshBody(concave_edge_data, concave_edge_cells_dict)
 concave_edge.color = 'black'
+convex_edge = MeshBody(convex_edge_data, convex_edge_cells_dict)
+convex_edge.color = 'black'
 mesh2 = MeshBody(mesh2_data, mesh2_cells_dict, velocity=np.float64([0.4, -0.5, -0.5]))
 mesh2.color = 'navy'
+mesh3 = MeshBody(mesh3_data, mesh3_cells_dict, velocity=np.float64([0.4, -0.5, -0.5]))
+mesh3.color = 'seagreen'
 glob_mesh = GlobalMesh(concave_edge, mesh2, bs=0.499, master_patches=None)
+# glob_mesh = GlobalMesh(convex_edge, mesh3, bs=0.499, master_patches=None)
 
 contact_pairs = glob_mesh.get_contact_pairs(dt)
 print('Contact Pairs Before:')
