@@ -112,9 +112,9 @@ mesh4 = MeshBody(mesh4_points, mesh4_cells_dict, velocity=np.float64([0, 0, 1]))
 mesh4.color = 'darkorange'
 mesh5 = MeshBody(mesh5_points, mesh5_cells_dict, velocity=np.float64([0, 0, -1]))
 mesh5.color = 'purple'
-# glob_mesh = GlobalMesh(mesh1, mesh2, bs=0.9, master_patches=None)
+glob_mesh = GlobalMesh(mesh1, mesh2, bs=0.9, master_patches=None)
 # glob_mesh = GlobalMesh(mesh1, mesh3, bs=0.9, master_patches=None)
-glob_mesh = GlobalMesh(mesh1, mesh4, bs=0.9, master_patches=None)
+# glob_mesh = GlobalMesh(mesh1, mesh4, bs=0.9, master_patches=None)
 # glob_mesh = GlobalMesh(mesh1, mesh5, bs=0.9, master_patches=None)
 
 print('Contact Pairs:')
@@ -180,7 +180,9 @@ for pair in glob_mesh.contact_pairs:
     patch_nodes.update([node.label for node in surf.nodes])
     slave_nodes.add(node.label)
 
-print('\nTotal Slave Force:', np.sum([glob_mesh.nodes[i].contact_force for i in slave_nodes], axis=0))
-print('Total Patch Force:', np.sum([glob_mesh.nodes[i].contact_force for i in patch_nodes], axis=0))
+patch_force = [glob_mesh.nodes[i].contact_force for i in patch_nodes]
+slave_force = [glob_mesh.nodes[i].contact_force for i in slave_nodes]
+print('\nTotal Slave Force:', np.sum(slave_force, axis=0))
+print('Total Patch Force:', np.sum(patch_force, axis=0))
 
 plt.show()

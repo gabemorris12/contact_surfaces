@@ -633,6 +633,379 @@ class TestContact(unittest.TestCase):
                                                        np.array([2.6367796834847468e-16, -3.1231519101599563e+00,
                                                                  -1.2659241367957712e+00])]), 12)
 
+    def test_edge_case1(self):
+        logger.setLevel(logging.WARNING)
+        dt = 1
+        mesh1_points = np.float64([
+            [-0.5, -2, 1],
+            [-0.5, 0, 2],
+            [-0.5, 2, 1],
+            [-0.5, -2, 0],
+            [-0.5, 0, 1],
+            [-0.5, 2, 0],
+            [0.5, -2, 1],
+            [0.5, 0, 2],
+            [0.5, 2, 1],
+            [0.5, -2, 0],
+            [0.5, 0, 1],
+            [0.5, 2, 0]
+        ])
+
+        mesh2_points = np.array([
+            [0., 1., 1.85],
+            [0., 2., 1.85],
+            [0., 2., 2.85],
+            [0., 1., 2.85],
+            [0.5, 1., 1.85],
+            [0.5, 2., 1.85],
+            [0.5, 2., 2.85],
+            [0.5, 1., 2.85]
+        ])
+
+        mesh1_cells_dict = {
+            'hexahedron': np.array([
+                [0, 1, 4, 3, 6, 7, 10, 9],
+                [1, 2, 5, 4, 7, 8, 11, 10]
+            ])
+        }
+
+        mesh2_cells_dict = {
+            'hexahedron': np.array([
+                [0, 1, 2, 3, 4, 5, 6, 7]
+            ])
+        }
+
+        mesh1 = MeshBody(mesh1_points, mesh1_cells_dict)
+        mesh2 = MeshBody(mesh2_points, mesh2_cells_dict, velocity=np.float64([0, -1.5, 0]))
+        glob_mesh = GlobalMesh(mesh1, mesh2, bs=0.9, master_patches=None)
+        glob_mesh.normal_increments(dt)
+
+        patch_nodes, slave_nodes = set(), set()
+        for pair in glob_mesh.contact_pairs:
+            surf = glob_mesh.surfaces[pair[0]]
+            node = glob_mesh.nodes[pair[1]]
+            patch_nodes.update([node.label for node in surf.nodes])
+            slave_nodes.add(node.label)
+
+        patch_force = [glob_mesh.nodes[i].contact_force for i in patch_nodes]
+        slave_force = [glob_mesh.nodes[i].contact_force for i in slave_nodes]
+
+        np.testing.assert_array_almost_equal(patch_force, np.array(
+            [np.array([0.00039405815017545825, 0.028060903387346552, 0.0561477838917793]),
+             np.array([0.0007054580584197037, -0.09162995214053238, -0.17632283742972332]),
+             np.array([-0.00010169135116741954, 0.013336908944505087, 0.025674488004020144]),
+             np.array([-0.002696718756725031, -0.19293877250834124, -0.3859768710296208])]
+        ), 12)
+        np.testing.assert_array_almost_equal(slave_force, np.array(
+            [np.array([0.002888944136789689, 0.08653652573906317, 0.1790479886077619]),
+             np.array([-0.0011900502374924008, 0.1566343865779587, 0.30142944795578286])]
+        ), 12)
+
+    def test_edge_case2(self):
+        dt = 1
+        mesh1_points = np.float64([
+            [-0.5, -2, 1],
+            [-0.5, 0, 2],
+            [-0.5, 2, 1],
+            [-0.5, -2, 0],
+            [-0.5, 0, 1],
+            [-0.5, 2, 0],
+            [0.5, -2, 1],
+            [0.5, 0, 2],
+            [0.5, 2, 1],
+            [0.5, -2, 0],
+            [0.5, 0, 1],
+            [0.5, 2, 0]
+        ])
+
+        mesh3_points = np.float64([
+            [-0.5, 0, 2.5],
+            [-0.5, 1, 2.5],
+            [-0.5, 1, 3.5],
+            [-0.5, 0, 3.5],
+            [0.25, 0, 2.5],
+            [0.25, 1, 2.5],
+            [0.25, 1, 3.5],
+            [0.25, 0, 3.5]
+        ])
+
+        mesh1_cells_dict = {
+            'hexahedron': np.array([
+                [0, 1, 4, 3, 6, 7, 10, 9],
+                [1, 2, 5, 4, 7, 8, 11, 10]
+            ])
+        }
+
+        mesh3_cells_dict = {
+            'hexahedron': np.array([
+                [0, 1, 2, 3, 4, 5, 6, 7]
+            ])
+        }
+
+        mesh1 = MeshBody(mesh1_points, mesh1_cells_dict)
+        mesh3 = MeshBody(mesh3_points, mesh3_cells_dict, velocity=np.float64([0, 0, -1]))
+        glob_mesh = GlobalMesh(mesh1, mesh3, bs=0.9, master_patches=None)
+        glob_mesh.normal_increments(dt)
+
+        patch_nodes, slave_nodes = set(), set()
+        for pair in glob_mesh.contact_pairs:
+            surf = glob_mesh.surfaces[pair[0]]
+            node = glob_mesh.nodes[pair[1]]
+            patch_nodes.update([node.label for node in surf.nodes])
+            slave_nodes.add(node.label)
+
+        patch_force = [glob_mesh.nodes[i].contact_force for i in patch_nodes]
+        slave_force = [glob_mesh.nodes[i].contact_force for i in slave_nodes]
+
+        np.testing.assert_array_almost_equal(patch_force, np.array(
+            [np.array([0., -0.01787344714052402, -0.03574689428104804]),
+             np.array([0., -0.22726392385803681, -0.45452784771607363]),
+             np.array([0., -0.025251547095337418, -0.050503094190674835]),
+             np.array([0., -0.16086102426471618, -0.32172204852943237])]
+        ), 12)
+        np.testing.assert_array_almost_equal(slave_force, np.array(
+            [np.array([0., 0.23831262854032026, 0.4766252570806405]),
+             np.array([0., 0., 0.]),
+             np.array([0., 0.19293731381829424, 0.3858746276365885]),
+             np.array([0., 0., 0.])]
+        ), 12)
+
+    def test_edge_case3(self):
+        dt = 1
+        mesh1_points = np.float64([
+            [-0.5, -2, 1],
+            [-0.5, 0, 2],
+            [-0.5, 2, 1],
+            [-0.5, -2, 0],
+            [-0.5, 0, 1],
+            [-0.5, 2, 0],
+            [0.5, -2, 1],
+            [0.5, 0, 2],
+            [0.5, 2, 1],
+            [0.5, -2, 0],
+            [0.5, 0, 1],
+            [0.5, 2, 0]
+        ])
+
+        mesh4_points = np.float64([
+            [0, -1.1, 0.45],
+            [0, -0.205572809, 0.8972135955],
+            [0, 0.2416407865, 0.0027864045],
+            [0, -0.6527864045, -0.444427191],
+            [0.5, -1.1, 0.45],
+            [0.5, -0.205572809, 0.8972135955],
+            [0.5, 0.2416407865, 0.0027864045],
+            [0.5, -0.6527864045, -0.444427191]
+        ])
+
+        mesh1_cells_dict = {
+            'hexahedron': np.array([
+                [0, 1, 4, 3, 6, 7, 10, 9],
+                [1, 2, 5, 4, 7, 8, 11, 10]
+            ])
+        }
+
+        mesh4_cells_dict = {
+            'hexahedron': np.array([
+                [0, 1, 2, 3, 4, 5, 6, 7]
+            ])
+        }
+
+        mesh1 = MeshBody(mesh1_points, mesh1_cells_dict)
+        mesh4 = MeshBody(mesh4_points, mesh4_cells_dict, velocity=np.float64([0, 0, 1]))
+        glob_mesh = GlobalMesh(mesh1, mesh4, bs=0.9, master_patches=None)
+        glob_mesh.normal_increments(dt)
+
+        patch_nodes, slave_nodes = set(), set()
+        for pair in glob_mesh.contact_pairs:
+            surf = glob_mesh.surfaces[pair[0]]
+            node = glob_mesh.nodes[pair[1]]
+            patch_nodes.update([node.label for node in surf.nodes])
+            slave_nodes.add(node.label)
+
+        patch_force = [glob_mesh.nodes[i].contact_force for i in patch_nodes]
+        slave_force = [glob_mesh.nodes[i].contact_force for i in slave_nodes]
+
+        np.testing.assert_array_almost_equal(patch_force, np.array(
+            [np.array([-4.0574952070499671e-06, -5.7791540019762284e-02, 1.1557427771560450e-01]),
+             np.array([0.000956963642172054, -0.3045586351124726, 0.7393426738443416]),
+             np.array([9.6497486606857278e-07, 2.5613804197574612e-03, 4.0167297195679184e-03]),
+             np.array([0.00042392109081310574, -0.1616397928214352, 0.32419907223510785]),
+             np.array([-0.03336359459851106, -0.45798492012543723, 1.471519904567675]),
+             np.array([-3.5912114304813137e-05, 2.6901066916132136e-03, 4.1927994587043068e-03])]
+        ), 12)
+        np.testing.assert_array_almost_equal(slave_force, np.array(
+            [np.array([0., 0.4321864879843813, -0.8643729759687626]),
+             np.array([0., 0.28090750579596024, -0.8620239371687722]),
+             np.array([0., 0., 0.]),
+             np.array([-0.0010916734256534427, 0.3158743100648214, -0.6341162938360453]),
+             np.array([0.03311338792582513, -0.05224490287742635, -0.29833225056742085]),
+             np.array([0., 0., 0.])]
+        ), 12)
+
+    def test_edge_case4(self):
+        dt = 1
+        mesh1_points = np.float64([
+            [-0.5, -2, 1],
+            [-0.5, 0, 2],
+            [-0.5, 2, 1],
+            [-0.5, -2, 0],
+            [-0.5, 0, 1],
+            [-0.5, 2, 0],
+            [0.5, -2, 1],
+            [0.5, 0, 2],
+            [0.5, 2, 1],
+            [0.5, -2, 0],
+            [0.5, 0, 1],
+            [0.5, 2, 0]
+        ])
+
+        mesh5_points = np.float64([
+            [-0.5, -1, 2.5],
+            [-0.5, 0, 2.5],
+            [-0.5, 1, 2.5],
+            [-0.5, 1, 3.5],
+            [-0.5, 0, 3.5],
+            [-0.5, -1, 3.5],
+            [0.5, -1, 2.5],
+            [0.5, 0, 2.5],
+            [0.5, 1, 2.5],
+            [0.5, 1, 3.5],
+            [0.5, 0, 3.5],
+            [0.5, -1, 3.5]
+        ])
+
+        mesh1_cells_dict = {
+            'hexahedron': np.array([
+                [0, 1, 4, 3, 6, 7, 10, 9],
+                [1, 2, 5, 4, 7, 8, 11, 10]
+            ])
+        }
+
+        mesh5_cells_dict = {
+            'hexahedron': np.array([
+                [0, 1, 4, 5, 6, 7, 10, 11],
+                [1, 2, 3, 4, 7, 8, 9, 10]
+            ])
+        }
+
+        mesh1 = MeshBody(mesh1_points, mesh1_cells_dict)
+        mesh5 = MeshBody(mesh5_points, mesh5_cells_dict, velocity=np.float64([0, 0, -1]))
+        glob_mesh = GlobalMesh(mesh1, mesh5, bs=0.9, master_patches=None)
+        glob_mesh.normal_increments(dt)
+
+        patch_nodes, slave_nodes = set(), set()
+        for pair in glob_mesh.contact_pairs:
+            surf = glob_mesh.surfaces[pair[0]]
+            node = glob_mesh.nodes[pair[1]]
+            patch_nodes.update([node.label for node in surf.nodes])
+            slave_nodes.add(node.label)
+
+        patch_force = [glob_mesh.nodes[i].contact_force for i in patch_nodes]
+        slave_force = [glob_mesh.nodes[i].contact_force for i in slave_nodes]
+
+        np.testing.assert_array_almost_equal(patch_force, np.array(
+            [np.array([0., 0., 0.]),
+             np.array([0., 0., -0.5]),
+             np.array([0., 0., 0.]),
+             np.array([0., 0., 0.]),
+             np.array([0., 0., -0.5]),
+             np.array([0., 0., 0.])]
+        ), 12)
+        np.testing.assert_array_almost_equal(slave_force, np.array(
+            [np.array([0., 0., 0.]),
+             np.array([0., 0., 0.5]),
+             np.array([0., 0., 0.]),
+             np.array([0., 0., 0.]),
+             np.array([0., 0., 0.5]),
+             np.array([0., 0., 0.])]
+        ), 12)
+
+    def test_dynamic_pair1(self):
+        logger.setLevel(logging.WARNING)
+
+        dt = 1
+
+        concave_edge_data = np.float64([
+            [1, -1, 0],
+            [1, 0, 0],
+            [1, 1, 0],
+            [1, 1, 1],
+            [1, 0, 1],
+            [1, -1, 1],
+            [0, -1, 0],
+            [0, 0, 0],
+            [0, 1, 0],
+            [0, 1, 0.75],
+            [0, 0, 0.75],
+            [0, -1, 1],
+            [-1, -1, 0],
+            [-1, 0, 0],
+            [-1, 1, 0],
+            [-1, 1, 1],
+            [-1, 0, 1],
+            [-1, -1, 1]
+        ])
+
+        mesh2_data = np.float64([
+            [-0.25, 0.25, 1],
+            [-0.25, 0.75, 1],
+            [-0.25, 0.75, 1.5],
+            [-0.25, 0.25, 1.5],
+            [-0.75, 0.25, 1],
+            [-0.75, 0.75, 1],
+            [-0.75, 0.75, 1.5],
+            [-0.75, 0.25, 1.5]
+        ])
+
+        concave_edge_cells_dict = {
+            'hexahedron': np.array([
+                [0, 1, 4, 5, 6, 7, 10, 11],
+                [1, 2, 3, 4, 7, 8, 9, 10],
+                [6, 7, 10, 11, 12, 13, 16, 17],
+                [7, 8, 9, 10, 13, 14, 15, 16]
+            ])
+        }
+
+        mesh2_cells_dict = {
+            'hexahedron': np.array([
+                [0, 1, 2, 3, 4, 5, 6, 7]
+            ])
+        }
+
+        concave_edge = MeshBody(concave_edge_data, concave_edge_cells_dict)
+        mesh2 = MeshBody(mesh2_data, mesh2_cells_dict, velocity=np.float64([0.4, -0.5, -0.5]))
+        glob_mesh = GlobalMesh(concave_edge, mesh2, bs=0.499, master_patches=None)
+        glob_mesh.normal_increments(dt)
+
+        patch_nodes, slave_nodes = set(), set()
+        for pair in glob_mesh.contact_pairs:
+            surf = glob_mesh.surfaces[pair[0]]
+            node = glob_mesh.nodes[pair[1]]
+            patch_nodes.update([node.label for node in surf.nodes])
+            slave_nodes.add(node.label)
+
+        patch_force = [glob_mesh.nodes[i].contact_force for i in patch_nodes]
+        slave_force = [glob_mesh.nodes[i].contact_force for i in slave_nodes]
+
+        np.testing.assert_array_almost_equal(patch_force, np.array(
+            [np.array([0.0005539015084259897, 0.0002314547943687331, -0.0017418355351483024]),
+             np.array([0.0064693940635127505, -0.004171248148862138, -0.019753218327383013]),
+             np.array([0.00137944514374141, -0.00137944514374141, -0.004169788577824197]),
+             np.array([-0.00020772148813252587, 0.0009392083693601984, -0.016889582221308302]),
+             np.array([-0.14486235161974242, -0.03099725641998173, -0.7289602421912597]),
+             np.array([-0.0009988720628906148, -0.009777428678570562, -0.03247795442072837]),
+             np.array([-0.0004100865581845867, 0., -0.001640346232738345]),
+             np.array([-0.024440972449171164, -0.0044189187150610225, -0.08057939217249387]),
+             np.array([-0.00254369341602789, -0.0013204864050972702, -0.00503960441697665])]
+        ), 12)
+        np.testing.assert_array_almost_equal(slave_force, np.array(
+            [np.array([-0.004376416097753706, 0.03374499172183596, 0.21947870744051065]),
+             np.array([0.02119140676689364, -0.00459632426310486, 0.16335412531988225]),
+             np.array([0.09054095946869792, 0.021745452888854114, 0.27759910437294305]),
+             np.array([0.057705006740631226, 0., 0.2308200269625249])]
+        ), 12)
+
 
 if __name__ == '__main__':
     unittest.main()

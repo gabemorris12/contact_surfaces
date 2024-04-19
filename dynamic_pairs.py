@@ -2,6 +2,8 @@ from contact import MeshBody, GlobalMesh
 import numpy as np
 import matplotlib.pyplot as plt
 
+np.set_printoptions(precision=50)
+
 dt = 1
 
 concave_edge_data = np.float64([
@@ -128,8 +130,10 @@ for pair in glob_mesh.contact_pairs:
     patch_nodes.update([node.label for node in surf.nodes])
     slave_nodes.add(node.label)
 
-print('Total Slave Force:', np.sum([glob_mesh.nodes[i].contact_force for i in slave_nodes], axis=0))
-print('Total Patch Force:', np.sum([glob_mesh.nodes[i].contact_force for i in patch_nodes], axis=0))
+patch_force = [glob_mesh.nodes[i].contact_force for i in patch_nodes]
+slave_force = [glob_mesh.nodes[i].contact_force for i in slave_nodes]
+print('Total Slave Force:', np.sum(slave_force, axis=0))
+print('Total Patch Force:', np.sum(patch_force, axis=0))
 
 fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, subplot_kw=dict(projection='3d', proj_type='ortho'))
 ax1.set_title('At $t$')
