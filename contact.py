@@ -1187,6 +1187,8 @@ class GlobalMesh:
         get_pair_by_node = {}
         for patch in self.master_patches:
             patch_obj = self.surfaces[patch]
+            # The following three lines must be uncommented to handle the elif is_hitting and node in master_nodes
+            # condition
             patch_nodes_used = [node.label in slave_nodes for node in patch_obj.nodes]
             if all(patch_nodes_used):
                 continue
@@ -1220,8 +1222,33 @@ class GlobalMesh:
                             contact_pairs.remove((patch_, node, (xi_, eta_, del_tc_), N_, k_))
                             contact_pairs.append(pair)
                             get_pair_by_node[node] = (pair[0], *pair[2:])
+                    elif del_tc > del_tc_:
+                        pass
                     else:
                         raise RuntimeError('This should not happen.')
+                # elif is_hitting and node in master_nodes:
+                #     add_current_pair = False
+                #     for patch_node in patch_obj.nodes:
+                #         if patch_node.label in slave_nodes:
+                #             pair = get_pair_by_node.get(patch_node.label)
+                #             if pair:
+                #                 patch_, (xi_, eta_, del_tc_), N_, k_ = pair
+                #
+                #                 if del_tc + tol < del_tc_:
+                #                     contact_pairs.remove((patch_, patch_node.label, (xi_, eta_, del_tc_), N_, k_))
+                #                     add_current_pair = True
+                #                     # contact_pairs.append((patch, node, (xi, eta, del_tc), N, k))
+                #                     # slave_nodes.remove(patch_node.label)
+                #                     del get_pair_by_node[patch_node.label]
+                #             else:
+                #                 add_current_pair = True
+                #                 # contact_pairs.append((patch, node, (xi, eta, del_tc), N, k))
+                #                 # slave_nodes.remove(patch_node.label)
+                #
+                #     if add_current_pair:
+                #         N = patch_obj.get_normal(np.float64([xi, eta]), del_tc)
+                #         contact_pairs.append((patch, node, (xi, eta, del_tc), N, k))
+                #         get_pair_by_node[node] = (patch, (xi, eta, del_tc), N, k)
 
         self.contact_pairs = contact_pairs
         self.get_pair_by_node = get_pair_by_node
