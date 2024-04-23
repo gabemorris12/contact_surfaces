@@ -4,6 +4,7 @@ from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.tri as tri
 from matplotlib.patches import FancyArrowPatch
 from mpl_toolkits.mplot3d import proj3d
+import meshio
 
 import logging
 
@@ -1558,6 +1559,82 @@ class GlobalMesh:
 
         # noinspection PyUnboundLocalVariable
         return iters
+
+    def to_vtk(self, filename: str):
+        """
+        Write to a vtk file.
+
+        :param filename: str; pathlike
+        :return:
+        """
+
+        assert filename.endswith('.vtk'), 'The filename must end with .vtk.'
+
+        connectivity = []
+        for mesh in self.mesh_bodies:
+            local_conn = mesh.cells_dict['hexahedron']
+            for conn in local_conn:
+                row = [mesh.nodes[c].label for c in conn]
+                connectivity.append(row)
+
+        cells_dict = {'hexahedron': connectivity}
+        # noinspection PyTypeChecker
+        mesh = meshio.Mesh(self.points, cells_dict)
+        mesh.write(filename)
+
+    def to_geo(self, filename: str, desc1=None, desc2=None):
+        """
+        Write to a geo file.
+
+        :param filename: str; pathlike
+        :param desc1: Description for the first line.
+        :param desc2: Description for the second line.
+        :return:
+        """
+        desc1 = desc1 if desc1 else "Description line 1"
+        desc2 = desc2 if desc2 else "Description line 2"
+
+        assert filename.endswith('.geo'), 'The filename must end with .geo.'
+
+        out = f"""{desc1}
+{desc2}
+node id assign
+element id assign
+part
+{1:>10}
+Mesh
+coordinates
+{len(self.points):>10}
+"""
+
+        x_vals, y_vals, z_vals = self.points[:, 0], self.points[:, 1], self.points[:, 2]
+        for x in x_vals:
+            out += f'{x:.5e}\n'
+        for y in y_vals:
+            out += f'{y:.5e}\n'
+        for z in z_vals:
+            out += f'{z:.5e}\n'
+
+        # noinspection PyUnresolvedReferences
+        n = len(self.surfaces[0].nodes)*2  # Number of nodes in a surface
+        n_elem = len(self.elements)  # Number of elements
+        out += f'hexa{n}\n'
+        out += f'{n_elem:>10}\n'
+
+        connectivity = []
+        for mesh in self.mesh_bodies:
+            local_conn = mesh.cells_dict['hexahedron']
+            for conn in local_conn:
+                row = [mesh.nodes[c].label for c in conn]
+                connectivity.append(row)
+
+        for r in connectivity:
+            for c in r:
+                out += f'{c + 1:>10}'
+            out += '\n'
+
+        with open(filename, 'w') as f:
+            f.write(out)
 
 
 def find_time(patch_nodes: list[Node], slave_node: Node, dt: float) -> float:
