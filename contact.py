@@ -1494,7 +1494,7 @@ class GlobalMesh:
         for iters in range(max_iter):
 
             if np.linalg.norm(fc_list) <= tol and fc_list:
-                return iters
+                break
 
             fc_list.clear()
 
@@ -1517,13 +1517,6 @@ class GlobalMesh:
                     dynamic_pair = self.get_dynamic_pair(ref, patch, node, dt, tol=tol, max_iter=max_iter)
                     if dynamic_pair:
                         new_patch, _, (new_xi, new_eta, _), new_N, _ = dynamic_pair
-                        # new_patch_obj = self.surfaces[new_patch]
-                        # new_phi_k = phi_p_2D(new_xi, new_eta, new_patch_obj.xi_p, new_patch_obj.eta_p)
-                        # new_guess = (new_xi, new_eta, new_patch_obj.get_fc_guess(node, new_N, dt, new_phi_k))
-                        # [(xi, eta, fc)] = new_patch_obj.normal_increment([node], [new_guess], [new_N], dt, tol=tol, max_iter=max_iter, ignore_off_edge=True)
-                        # self.dynamic_pairs[node_id] = (new_patch, (xi, eta, None), new_N, None)
-                        # self.contact_pairs[i] = (new_patch, node_id, (xi, eta, None), new_N, None)
-                        # self.get_pair_by_node[node_id] = (new_patch, (xi, eta, None), new_N, None)
                         self.dynamic_pairs[node_id] = (new_patch, (new_xi, new_eta, None), new_N, None)
                         self.contact_pairs[i] = dynamic_pair
                         self.get_pair_by_node[node_id] = (new_patch, (new_xi, new_eta, None), new_N, None)
@@ -1533,6 +1526,8 @@ class GlobalMesh:
                     self.contact_pairs[i] = (surface_id, node_id, (xi, eta, del_tc), N, k)
                     self.get_pair_by_node[node_id] = (surface_id, (xi, eta, del_tc), N, k)
                 fc_list.append(fc)
+
+        # Second stage detection. It's possible that the extra forces cause additional contact pairs.
 
         # noinspection PyUnboundLocalVariable
         return iters

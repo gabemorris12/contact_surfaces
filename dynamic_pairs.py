@@ -107,6 +107,7 @@ mesh2.color = 'navy'
 mesh3 = MeshBody(mesh3_data, mesh3_cells_dict, velocity=np.float64([0.4, -0.5, -0.5]))
 mesh3.color = 'seagreen'
 glob_mesh = GlobalMesh(concave_edge, mesh2, bs=0.499, master_patches=None)
+# dt = 0.99  # 1 is too much
 # glob_mesh = GlobalMesh(convex_edge, mesh3, bs=0.499, master_patches=None)
 
 contact_pairs = glob_mesh.get_contact_pairs(dt)
