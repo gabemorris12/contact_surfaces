@@ -765,9 +765,7 @@ class TestContact(unittest.TestCase):
         ), 12)
         np.testing.assert_array_almost_equal(slave_force, np.array(
             [np.array([0., 0.23831262854032026, 0.4766252570806405]),
-             np.array([0., 0., 0.]),
-             np.array([0., 0.19293731381829424, 0.3858746276365885]),
-             np.array([0., 0., 0.])]
+             np.array([0., 0.19293731381829424, 0.3858746276365885])]
         ), 12)
 
     def test_edge_case3(self):
@@ -835,12 +833,10 @@ class TestContact(unittest.TestCase):
              np.array([-3.5912114304813137e-05, 2.6901066916132136e-03, 4.1927994587043068e-03])]
         ), 12)
         np.testing.assert_array_almost_equal(slave_force, np.array(
-            [np.array([0., 0.4321864879843813, -0.8643729759687626]),
-             np.array([0., 0.28090750579596024, -0.8620239371687722]),
-             np.array([0., 0., 0.]),
-             np.array([-0.0010916734256534427, 0.3158743100648214, -0.6341162938360453]),
+            [np.array([-0.0010916734256534427, 0.3158743100648214, -0.6341162938360453]),
              np.array([0.03311338792582513, -0.05224490287742635, -0.29833225056742085]),
-             np.array([0., 0., 0.])]
+             np.array([0., 0.4321864879843813, -0.8643729759687626]),
+             np.array([0., 0.28090750579596024, -0.8620239371687722])]
         ), 12)
 
     def test_edge_case4(self):
@@ -908,17 +904,11 @@ class TestContact(unittest.TestCase):
             [np.array([0., 0., 0.]),
              np.array([0., 0., -0.5]),
              np.array([0., 0., 0.]),
-             np.array([0., 0., 0.]),
-             np.array([0., 0., -0.5]),
-             np.array([0., 0., 0.])]
+             np.array([0., 0., -0.5])]
         ), 12)
         np.testing.assert_array_almost_equal(slave_force, np.array(
-            [np.array([0., 0., 0.]),
-             np.array([0., 0., 0.5]),
-             np.array([0., 0., 0.]),
-             np.array([0., 0., 0.]),
-             np.array([0., 0., 0.5]),
-             np.array([0., 0., 0.])]
+            [np.array([0., 0., 0.5]),
+             np.array([0., 0., 0.5])]
         ), 12)
 
     def test_dynamic_pair1(self):

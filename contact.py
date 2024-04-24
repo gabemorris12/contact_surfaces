@@ -124,6 +124,7 @@ class Node:
         self.mass = mass
         self.corner_force = corner_force
         self.contact_force = np.zeros((3,), dtype=np.float64)  # Force due to contact
+        self.fc = 0  # placeholder for force increments
 
     def get_acc(self):
         """
@@ -136,6 +137,7 @@ class Node:
         Zero out the contact force.
         """
         self.contact_force = np.zeros((3,), dtype=np.float64)
+        self.fc = 0
 
     @property
     def ref(self):
@@ -490,18 +492,19 @@ class Surface:
                 continue
 
             phi_k_arr = phi_p_2D(xi, eta, self.xi_p, self.eta_p)
-            previous = np.copy(node.contact_force)
-            node.contact_force += N*fc
 
-            if np.dot(N, node.contact_force) < 0:
-                # Tensile behavior doesn't need to be obeyed
-                node.contact_force = np.zeros((3,), dtype=np.float64)
-                fc = 0
+            if node.fc + fc < 0:  # Force increment has become tensile
+                node.contact_force += -N*node.fc
 
-                # The additional forces from previous iterations also need to be zeroed
                 for patch_node, phi_k in zip(self.nodes, phi_k_arr):
-                    patch_node.contact_force += previous*phi_k
+                    patch_node.contact_force += N*node.fc*phi_k
+
+                node.fc = 0
+                fc = 0
             else:
+                node.fc += fc
+                node.contact_force += N*fc
+
                 for patch_node, phi_k in zip(self.nodes, phi_k_arr):
                     patch_node.contact_force += -N*fc*phi_k
 
@@ -1188,11 +1191,11 @@ class GlobalMesh:
         get_pair_by_node = {}
         for patch in self.master_patches:
             patch_obj = self.surfaces[patch]
-            # The following three lines must be uncommented to handle the elif is_hitting and node in master_nodes
+            # The following three lines must be commented out to handle the elif is_hitting and node in master_nodes
             # condition
-            patch_nodes_used = [node.label in slave_nodes for node in patch_obj.nodes]
-            if all(patch_nodes_used):
-                continue
+            # patch_nodes_used = [node.label in slave_nodes for node in patch_obj.nodes]
+            # if all(patch_nodes_used):
+            #     continue
 
             _, possible_nodes = self.find_nodes(patch, dt)
             for node in possible_nodes:
@@ -1227,29 +1230,36 @@ class GlobalMesh:
                         pass
                     else:
                         raise RuntimeError('This should not happen.')
-                # elif is_hitting and node in master_nodes:
-                #     add_current_pair = False
-                #     for patch_node in patch_obj.nodes:
-                #         if patch_node.label in slave_nodes:
-                #             pair = get_pair_by_node.get(patch_node.label)
-                #             if pair:
-                #                 patch_, (xi_, eta_, del_tc_), N_, k_ = pair
-                #
-                #                 if del_tc + tol < del_tc_:
-                #                     contact_pairs.remove((patch_, patch_node.label, (xi_, eta_, del_tc_), N_, k_))
-                #                     add_current_pair = True
-                #                     # contact_pairs.append((patch, node, (xi, eta, del_tc), N, k))
-                #                     # slave_nodes.remove(patch_node.label)
-                #                     del get_pair_by_node[patch_node.label]
-                #             else:
-                #                 add_current_pair = True
-                #                 # contact_pairs.append((patch, node, (xi, eta, del_tc), N, k))
-                #                 # slave_nodes.remove(patch_node.label)
-                #
-                #     if add_current_pair:
-                #         N = patch_obj.get_normal(np.float64([xi, eta]), del_tc)
-                #         contact_pairs.append((patch, node, (xi, eta, del_tc), N, k))
-                #         get_pair_by_node[node] = (patch, (xi, eta, del_tc), N, k)
+                elif is_hitting and node in master_nodes:
+                    add_current_pair = False
+                    hitting_after = []
+                    # Remove contact that will occur after the current contact.
+                    for patch_node in patch_obj.nodes:
+                        pair = get_pair_by_node.get(patch_node.label)
+                        if pair:
+                            patch_, (xi_, eta_, del_tc_), N_, k_ = pair
+
+                            if del_tc + tol < del_tc_:  # Master patch node is hitting after the current pair.
+                                contact_pairs.remove((patch_, patch_node.label, (xi_, eta_, del_tc_), N_, k_))
+                                hitting_after.append(True)
+                                slave_nodes.remove(patch_node.label)
+                                del get_pair_by_node[patch_node.label]
+                            else:
+                                hitting_after.append(False)
+
+                    ref = np.float64([xi, eta])
+                    if not hitting_after:
+                        add_current_pair = True
+                    elif all(hitting_after):
+                        add_current_pair = True
+                    elif any(hitting_after) and all(np.logical_and(ref > -1 + tol, ref < 1 - tol)):
+                        add_current_pair = True
+
+                    if add_current_pair:
+                        N = patch_obj.get_normal(np.float64([xi, eta]), del_tc)
+                        contact_pairs.append((patch, node, (xi, eta, del_tc), N, k))
+                        get_pair_by_node[node] = (patch, (xi, eta, del_tc), N, k)
+                        slave_nodes.append(node)
 
         self.contact_pairs = contact_pairs
         self.get_pair_by_node = get_pair_by_node

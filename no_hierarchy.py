@@ -1,9 +1,8 @@
 from contact import MeshBody, GlobalMesh
 import numpy as np
 import matplotlib.pyplot as plt
-from itertools import groupby
 
-dt = 1
+dt = 0.75
 
 np.set_printoptions(precision=50)
 
@@ -133,28 +132,11 @@ for node in glob_mesh.nodes: ax1.text(*node.pos, str(node.label), color='black')
 for pair in glob_mesh.contact_pairs:
     print(pair)
 
-patch_nodes, slave_nodes = set(), set()
-for pair in glob_mesh.contact_pairs:
-    surf = glob_mesh.surfaces[pair[0]]
-    node = glob_mesh.nodes[pair[1]]
-    patch_nodes.update([node.label for node in surf.nodes])
-    slave_nodes.add(node.label)
-
-patch_force = [glob_mesh.nodes[i].contact_force for i in patch_nodes]
-slave_force = [glob_mesh.nodes[i].contact_force for i in slave_nodes]
-print('Total Slave Force:', np.sum(slave_force, axis=0))
-print('Total Patch Force:', np.sum(patch_force, axis=0))
 
 for surf in glob_mesh.surfaces: surf.zero_contact()
 glob_mesh.contact_pairs = None
 
 print('Glue Iteration Count:', glob_mesh.glue_increments(dt))
-
-# noinspection PyTypeChecker
-patch_force = [glob_mesh.nodes[i].contact_force for i in patch_nodes]
-slave_force = [glob_mesh.nodes[i].contact_force for i in slave_nodes]
-print('Total Slave Force:', np.sum(slave_force, axis=0))
-print('Total Patch Force:', np.sum(patch_force, axis=0))
 
 for mesh in glob_mesh.mesh_bodies:
     for surf in mesh.surfaces:
