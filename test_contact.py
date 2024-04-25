@@ -586,6 +586,7 @@ class TestContact(unittest.TestCase):
         # Testing the glue force condition
         for surf in glob_mesh.surfaces: surf.zero_contact()
         glob_mesh.contact_pairs = []
+        glob_mesh.get_pair_by_node = {}
 
         self.assertEqual(glob_mesh.glue_increments(dt), 24)
 

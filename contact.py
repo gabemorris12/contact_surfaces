@@ -991,22 +991,14 @@ class GlobalMesh:
         self.surfaces = np.concatenate([mesh.surfaces for mesh in self.mesh_bodies])
         self.nodes = np.concatenate([mesh.nodes for mesh in self.mesh_bodies])
         self.surface_count = np.concatenate([mesh.surface_count for mesh in self.mesh_bodies])
-        self.points = np.concatenate([mesh.points for mesh in self.mesh_bodies])
-        self.velocities = np.array([node.vel for node in self.nodes])
-        self.accelerations = np.array([node.get_acc() for node in self.nodes])
+        self.points = None
+        self.velocities = None
+        self.accelerations = None
 
         self.bs = bs
 
-        vels = np.amax(np.abs(self.velocities), axis=0)
-        accs = np.amax(np.abs(self.accelerations), axis=0)
-        for i, vel in enumerate(vels):
-            if vel == 0:
-                # When I get this into fierro, consider choosing a velocity that results in a distance that is half the
-                # bucket size. I need access to the time step, which is not available here.
-                vels[i] = 1
-
-        self.vx_max, self.vy_max, self.vz_max = vels
-        self.ax_max, self.ay_max, self.az_max = accs
+        self.vx_max, self.vy_max, self.vz_max = None, None, None
+        self.ax_max, self.ay_max, self.az_max = None, None, None
 
         e_start = len(self.mesh_bodies[0].elements)
         s_start = len(self.mesh_bodies[0].surfaces)
@@ -1046,7 +1038,7 @@ class GlobalMesh:
         self.Sz = None
 
         self.nb = None
-        self.n, _ = self.points.shape
+        self.n = len(self.nodes)
 
         self.nbox, self.lbox, self.npoint, self.nsort = None, None, None, None
 
@@ -1056,11 +1048,34 @@ class GlobalMesh:
 
         self.sort()
 
+    def set_max_min(self):
+        """
+        Set the max and min velocity and acceleration.
+        """
+
+        self.points = np.array([node.pos for node in self.nodes])
+        self.velocities = np.array([node.vel for node in self.nodes])
+        self.accelerations = np.array([node.get_acc() for node in self.nodes])
+
+        vels = np.amax(np.abs(self.velocities), axis=0)
+        accs = np.amax(np.abs(self.accelerations), axis=0)
+        for i, vel in enumerate(vels):
+            if vel == 0:
+                # When I get this into fierro, consider choosing a velocity that results in a distance that is half the
+                # bucket size. I need access to the time step, which is not available here.
+                vels[i] = 1
+
+        self.vx_max, self.vy_max, self.vz_max = vels
+        self.ax_max, self.ay_max, self.az_max = accs
+
     def sort(self):
         """
         This is the start of the bucket search algorithm which constructs lbox, nbox, nsort, and npoint. The sorting
         algorithm is given in section 3.1.2 in the Sandia paper.
         """
+
+        self.set_max_min()
+
         # Find the maximum and minimum bounds of the global bounding box.
         self.x_max, self.y_max, self.z_max = np.amax(self.points, axis=0)
         self.x_min, self.y_min, self.z_min = np.amin(self.points, axis=0)
@@ -1216,6 +1231,11 @@ class GlobalMesh:
 
             _, possible_nodes = self.find_nodes(patch, dt)
             for node in possible_nodes:
+                if self.get_pair_by_node.get(node):
+                    slave_nodes.append(node)
+                    master_nodes.extend([node.label for node in patch_obj.nodes])
+                    continue
+
                 is_hitting, del_tc, (xi, eta), k = self.contact_check_through_reference(patch, node, dt,
                                                                                         include_initial_penetration=include_initial_penetration,
                                                                                         tol=tol,
@@ -1548,7 +1568,7 @@ class GlobalMesh:
                     self.get_pair_by_node[node_id] = (surface_id, (xi, eta, del_tc), N, k)
                 fc_list.append(fc)
 
-        # Second stage detection. It's possible that the extra forces cause additional contact pairs.
+        # Second stage detection might need to be added here.
 
         # noinspection PyUnboundLocalVariable
         return iters1
@@ -1585,6 +1605,53 @@ class GlobalMesh:
 
         # noinspection PyUnboundLocalVariable
         return iters
+
+    def remove_pairs(self, dt: float, tol=1e-12):
+        """
+        Remove appropriate pairs. Pairs are removed if the contact force is zero (that means a tensile force was
+        required) or if the reference coordinate is out of bounds. The out-of-bounds case occurs when the node slides
+        across a concave surface. These conditions should only be used for the normal force constraint. A different
+        criteria should be implemented for the glue constraint.
+
+        Additionally, the normals are updated for those pairs that are not to be removed.
+
+        :param dt: float; The current time step. Used for getting the new normal.
+        :param tol: float; The tolerance for the edge cases and zero condition.
+        """
+
+        for pair in self.contact_pairs[:]:  # looping over a copy
+            patch, node, (xi, eta, del_tc), N, k = pair
+            node_obj = self.nodes[node]
+            ref = np.float64([xi, eta])
+
+            if node_obj.fc == 0:
+                self.contact_pairs.remove(pair)
+                del self.get_pair_by_node[node]
+            elif not all(np.logical_and(ref >= -1 - tol, ref <= 1 + tol)):
+                self.contact_pairs.remove(pair)
+                del self.get_pair_by_node[node]
+            else:
+                self.contact_pairs.remove(pair)
+
+                patch_obj = self.surfaces[patch]
+                N = patch_obj.get_normal(ref, dt)
+                self.contact_pairs.append((patch, node, (xi, eta, None), N, None))
+                self.get_pair_by_node[node] = (patch, (xi, eta, None), N, None)
+
+    def update_nodes(self, dt: float):
+        """
+        Update the node positions and velocities. This should be done after the contact force has been determined.
+
+        :param dt: float; The current time step.
+        """
+        for node in self.nodes:
+            acc = node.get_acc()
+            node.pos = node.pos + node.vel*dt + 0.5*acc*dt**2
+            node.vel = node.vel + acc*dt
+
+        for patch in self.surfaces:
+            patch.points = np.array([node.pos for node in patch.nodes])
+            patch.vel_points = np.array([node.vel for node in patch.nodes])
 
     def to_vtk(self, filename: str):
         """

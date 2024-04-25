@@ -68,7 +68,6 @@ print('Contact Pairs Before:')
 for pair in contact_pairs: print(pair, '---> Node Force:', glob_mesh.nodes[pair[1]].contact_force)
 print()
 
-
 print('Total Iterations', glob_mesh.normal_increments(dt))
 print()
 
