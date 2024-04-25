@@ -144,7 +144,7 @@ print('Total Slave Force:', np.sum(slave_force, axis=0))
 print('Total Patch Force:', np.sum(patch_force, axis=0))
 
 for surf in glob_mesh.surfaces: surf.zero_contact()
-glob_mesh.contact_pairs = None
+glob_mesh.contact_pairs = []
 
 print('Glue Iteration Count:', glob_mesh.glue_increments(dt))
 

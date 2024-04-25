@@ -117,7 +117,7 @@ for pair in glob_mesh.contact_pairs: print(pair)
 ax2.set_aspect('equal')
 
 for surf in glob_mesh.surfaces: surf.zero_contact()
-glob_mesh.contact_pairs = None
+glob_mesh.contact_pairs = []
 
 ax3.set_title('Glue Force')
 ax3.set_xlabel('x')

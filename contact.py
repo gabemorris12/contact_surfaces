@@ -1047,7 +1047,7 @@ class GlobalMesh:
 
         self.master_patches = master_patches if master_patches else np.where(self.surface_count == 1)[0]
         self.slave_nodes = slave_nodes
-        self.contact_pairs, self.get_pair_by_node, self.dynamic_pairs = None, None, {}
+        self.contact_pairs, self.get_pair_by_node, self.dynamic_pairs = [], {}, {}
 
         self.sort()
 
@@ -1178,11 +1178,13 @@ class GlobalMesh:
         # noinspection PyUnresolvedReferences
         return surf.contact_check_through_reference(self.nodes[node_id], dt, tol=tol, max_iter=max_iter)
 
-    def get_contact_pairs(self, dt: float, tol=1e-12, max_iter=30):
+    def get_contact_pairs(self, dt: float, glue=False, tol=1e-12, max_iter=30):
         """
         Get the contact pairs for the current time step.
 
         :param dt: float; The current time step.
+        :param glue: bool; For glue contact pairs, some of the pairs will be omitted if a node becomes both master and
+                     slave.
         :param tol: float; The tolerance for the contact check.
         :param max_iter: int; The maximum number of iterations for the Newton-Raphson scheme.
         :return: list; A list of tuples where each tuple consists of (surface_id, node_id, (xi, eta, del_tc), iters).
@@ -1240,10 +1242,11 @@ class GlobalMesh:
                             patch_, (xi_, eta_, del_tc_), N_, k_ = pair
 
                             if del_tc + tol < del_tc_:  # Master patch node is hitting after the current pair.
-                                contact_pairs.remove((patch_, patch_node.label, (xi_, eta_, del_tc_), N_, k_))
                                 hitting_after.append(True)
-                                slave_nodes.remove(patch_node.label)
-                                del get_pair_by_node[patch_node.label]
+                                if glue:
+                                    contact_pairs.remove((patch_, patch_node.label, (xi_, eta_, del_tc_), N_, k_))
+                                    slave_nodes.remove(patch_node.label)
+                                    del get_pair_by_node[patch_node.label]
                             else:
                                 hitting_after.append(False)
 
@@ -1261,8 +1264,8 @@ class GlobalMesh:
                         get_pair_by_node[node] = (patch, (xi, eta, del_tc), N, k)
                         slave_nodes.append(node)
 
-        self.contact_pairs = contact_pairs
-        self.get_pair_by_node = get_pair_by_node
+        self.contact_pairs.extend(contact_pairs)
+        self.get_pair_by_node.update(get_pair_by_node)
 
         return contact_pairs
 
@@ -1487,11 +1490,11 @@ class GlobalMesh:
                     considered a zero, the edge cases, and the convergence criteria.
         :param max_iter: int; The maximum number of iterations for all solving schemes.
         """
-        if self.contact_pairs is None:
+        if not self.contact_pairs:
             self.get_contact_pairs(dt, tol=tol, max_iter=max_iter)
 
         fc_list = []
-        for iters in range(max_iter):
+        for iters1 in range(max_iter):
 
             if np.linalg.norm(fc_list) <= tol and fc_list:
                 break
@@ -1530,7 +1533,7 @@ class GlobalMesh:
         # Second stage detection. It's possible that the extra forces cause additional contact pairs.
 
         # noinspection PyUnboundLocalVariable
-        return iters
+        return iters1
 
     def glue_increments(self, dt: float, tol=1e-12, max_iter=30):
         """
@@ -1542,7 +1545,7 @@ class GlobalMesh:
         :param max_iter: int; The maximum number of iterations for all solving schemes.
         :return:
         """
-        if self.contact_pairs is None:
+        if not self.contact_pairs:
             self.get_contact_pairs(dt, tol=tol, max_iter=max_iter)
 
         g_list = []

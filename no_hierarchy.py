@@ -134,7 +134,8 @@ for pair in glob_mesh.contact_pairs:
 
 
 for surf in glob_mesh.surfaces: surf.zero_contact()
-glob_mesh.contact_pairs = None
+glob_mesh.contact_pairs = []
+glob_mesh.get_contact_pairs(dt, glue=True)
 
 print('Glue Iteration Count:', glob_mesh.glue_increments(dt))
 
