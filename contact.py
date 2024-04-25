@@ -538,7 +538,8 @@ class Surface:
 
         return sols
 
-    def contact_check_through_reference(self, node: Node, dt: float, tol=1e-12, max_iter=30):
+    def contact_check_through_reference(self, node: Node, dt: float, include_initial_penetration=False, tol=1e-12,
+                                        max_iter=30):
         """
         This procedure finds the reference point and the delta_tc all at once using a Newton-Raphson scheme. If all the
         reference points are between -1 and 1, the delta_tc is between 0 and dt, and it took less than 25 iterations to
@@ -546,6 +547,9 @@ class Surface:
 
         :param node: Node; The node object to be tested for contact.
         :param dt: float; The current time step in the analysis.
+        :param include_initial_penetration: bool; If True, then if the node has already just penetrated the surface
+                                            before time 0, then it will be considered. This is an alternative method
+                                            to multiple stage detection.
         :param tol: float; The tolerance of the edge cases. For the end cases where either reference coordinate is
                     either 1 or -1, the tolerance will adjust for floating point error, ensuring that the edge case is
                     met.
@@ -579,7 +583,8 @@ class Surface:
         del_tc = sol[0][2]
         k = sol[1]
 
-        if all(np.logical_and(ref >= -1 - tol, ref <= 1 + tol)) and 0 - tol <= del_tc <= dt + tol and k <= max_iter - 2:
+        a = -dt - tol if include_initial_penetration else 0 - tol
+        if all(np.logical_and(ref >= -1 - tol, ref <= 1 + tol)) and a <= del_tc <= dt + tol and k <= max_iter - 2:
             del_tc = 0 if 0 - tol <= del_tc <= 0 + tol else del_tc
             del_tc = dt if dt - tol <= del_tc <= dt + tol else del_tc
             return True, del_tc, ref, k
@@ -1157,7 +1162,9 @@ class GlobalMesh:
         # noinspection PyUnresolvedReferences
         return surf.contact_check(self.nodes[node_id], dt, tol)
 
-    def contact_check_through_reference(self, surface_id: int, node_id: int, dt: float, tol=1e-12, max_iter=30):
+    def contact_check_through_reference(self, surface_id: int, node_id: int, dt: float,
+                                        include_initial_penetration=False,
+                                        tol=1e-12, max_iter=30):
         """
         This procedure finds the reference point and the delta_tc all at once using a Newton-Raphson scheme. If all the
         reference points are between -1 and 1 and the delta_tc is between 0 and dt, then the node will pass through the
@@ -1166,6 +1173,9 @@ class GlobalMesh:
         :param surface_id: int; The surface id.
         :param node_id: int; The node id to be tested for contact.
         :param dt: float; The current time step in the analysis.
+        :param include_initial_penetration: bool; If True, then if the node has already just penetrated the surface
+                                            before time 0, then it will be considered. This is an alternative method
+                                            to multiple stage detection.
         :param tol: float; The tolerance of the edge cases. For the end cases where either reference coordinate is
                     either 1 or -1, the tolerance will adjust for floating point error, ensuring that the edge case is
                     met.
@@ -1176,15 +1186,20 @@ class GlobalMesh:
         """
         surf = self.surfaces[surface_id]  # See contact_check from class surface.
         # noinspection PyUnresolvedReferences
-        return surf.contact_check_through_reference(self.nodes[node_id], dt, tol=tol, max_iter=max_iter)
+        return surf.contact_check_through_reference(self.nodes[node_id], dt,
+                                                    include_initial_penetration=include_initial_penetration,
+                                                    tol=tol, max_iter=max_iter)
 
-    def get_contact_pairs(self, dt: float, glue=False, tol=1e-12, max_iter=30):
+    def get_contact_pairs(self, dt: float, glue=False, include_initial_penetration=False, tol=1e-12, max_iter=30):
         """
         Get the contact pairs for the current time step.
 
         :param dt: float; The current time step.
         :param glue: bool; For glue contact pairs, some of the pairs will be omitted if a node becomes both master and
                      slave.
+        :param include_initial_penetration: bool; If True, then if the node has already just penetrated the surface
+                                            before time 0, then it will be considered. This is an alternative method
+                                            to multiple stage detection.
         :param tol: float; The tolerance for the contact check.
         :param max_iter: int; The maximum number of iterations for the Newton-Raphson scheme.
         :return: list; A list of tuples where each tuple consists of (surface_id, node_id, (xi, eta, del_tc), iters).
@@ -1201,29 +1216,31 @@ class GlobalMesh:
 
             _, possible_nodes = self.find_nodes(patch, dt)
             for node in possible_nodes:
-                is_hitting, del_tc, (xi, eta), k = self.contact_check_through_reference(patch, node, dt, tol=tol,
+                is_hitting, del_tc, (xi, eta), k = self.contact_check_through_reference(patch, node, dt,
+                                                                                        include_initial_penetration=include_initial_penetration,
+                                                                                        tol=tol,
                                                                                         max_iter=max_iter)
                 if is_hitting and node not in master_nodes and node not in slave_nodes:
                     slave_nodes.append(node)
                     master_nodes.extend([node.label for node in patch_obj.nodes])
                     ref = np.float64([xi, eta])
-                    # It may be better to get the normal direction based off the time at dt. Also, it might be better
+                    # The normal direction is based off the patch position at time dt. In the future, it might be better
                     # to get this based off the minimum distance.
-                    N = patch_obj.get_normal(ref, del_tc)
+                    N = patch_obj.get_normal(ref, dt)
                     contact_pairs.append((patch, node, (xi, eta, del_tc), N, k))
                     get_pair_by_node[node] = (patch, (xi, eta, del_tc), N, k)
                 elif is_hitting and node in slave_nodes:
                     patch_, (xi_, eta_, del_tc_), N_, k_ = get_pair_by_node[node]  # original
 
-                    if del_tc + tol < del_tc_:  # This means that it will intersect another surface before the current pair.
-                        N = patch_obj.get_normal(np.float64([xi, eta]), del_tc)
+                    if del_tc + tol < del_tc_:  # This means that it will intersect with the current before the original
+                        N = patch_obj.get_normal(np.float64([xi, eta]), dt)
                         contact_pairs.remove((patch_, node, (xi_, eta_, del_tc_), N_, k_))
                         contact_pairs.append((patch, node, (xi, eta, del_tc), N, k))
                         get_pair_by_node[node] = (patch, (xi, eta, del_tc), N, k)
                     elif del_tc_ - tol <= del_tc <= del_tc_ + tol:  # This means we are at an edge.
-                        N = patch_obj.get_normal(np.float64([xi, eta]), del_tc)
+                        N = patch_obj.get_normal(np.float64([xi, eta]), dt)
                         pair = self.get_edge_pair((patch, node, (xi, eta, del_tc), N, k),
-                                                  (patch_, node, (xi_, eta_, del_tc_), N_, k_), del_tc)
+                                                  (patch_, node, (xi_, eta_, del_tc_), N_, k_), dt)
                         if pair[0] != patch_:
                             contact_pairs.remove((patch_, node, (xi_, eta_, del_tc_), N_, k_))
                             contact_pairs.append(pair)
@@ -1259,7 +1276,7 @@ class GlobalMesh:
                         add_current_pair = True
 
                     if add_current_pair:
-                        N = patch_obj.get_normal(np.float64([xi, eta]), del_tc)
+                        N = patch_obj.get_normal(np.float64([xi, eta]), dt)
                         contact_pairs.append((patch, node, (xi, eta, del_tc), N, k))
                         get_pair_by_node[node] = (patch, (xi, eta, del_tc), N, k)
                         slave_nodes.append(node)
