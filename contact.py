@@ -1240,7 +1240,7 @@ class GlobalMesh:
                     elif del_tc_ - tol <= del_tc <= del_tc_ + tol:  # This means we are at an edge.
                         N = patch_obj.get_normal(np.float64([xi, eta]), dt)
                         pair = self.get_edge_pair((patch, node, (xi, eta, del_tc), N, k),
-                                                  (patch_, node, (xi_, eta_, del_tc_), N_, k_), dt)
+                                                  (patch_, node, (xi_, eta_, del_tc_), N_, k_), dt, tol=tol)
                         if pair[0] != patch_:
                             contact_pairs.remove((patch_, node, (xi_, eta_, del_tc_), N_, k_))
                             contact_pairs.append(pair)
@@ -1286,7 +1286,7 @@ class GlobalMesh:
 
         return contact_pairs
 
-    def get_edge_pair(self, pair1: tuple, pair2: tuple, del_t: float):
+    def get_edge_pair(self, pair1: tuple, pair2: tuple, del_t: float, tol=1e-12):
         """
         If a contact point is found on an edge, then the better patch option needs to be determined. This function
         will return the better option based on the normal of the node.
@@ -1294,6 +1294,7 @@ class GlobalMesh:
         :param pair1: tuple; The first contact pair information.
         :param pair2: tuple; The second contact pair information.
         :param del_t: float; The time at which the normals are being compared.
+        :param tol: float; The tolerance for equality check.
         :return: tuple; pair1 or pair2
         """
         patch1, node1, (xi1, eta1, del_tc1), N1, k1 = pair1
@@ -1304,15 +1305,15 @@ class GlobalMesh:
         node = self.nodes[node1]
         N = self.get_node_normal(node, del_t)
 
-        if np.dot(N, N1) < np.dot(N, N2):
-            return pair1
-        elif np.dot(N, N1) > np.dot(N, N2):
-            return pair2
-        else:
+        if np.dot(N, N2) - tol <= np.dot(N, N1) <= np.dot(N, N2) + tol:
             # Return the first patch with the normal being the average
             N_new = (N1 + N2)/2
             N_new = N_new/np.linalg.norm(N_new)
             return patch1, node1, (xi1, eta1, del_tc1), N_new, k1
+        elif np.dot(N, N1) < np.dot(N, N2):
+            return pair1
+        elif np.dot(N, N1) > np.dot(N, N2):
+            return pair2
 
     def get_edge_normal(self, ref: np.ndarray, surf: Surface, del_t: float, tol=1e-12,
                         max_iter=30):

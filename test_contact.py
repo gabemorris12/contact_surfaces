@@ -267,8 +267,8 @@ class TestContact(unittest.TestCase):
         contact_pairs = TestContact.global_mesh.get_contact_pairs(TestContact.dt1)
         supposed_to_be = [
             (23, 27),
-            (23, 39),
             (27, 31),
+            (27, 39),
             (32, 28),
             (32, 35),
             (35, 32),
