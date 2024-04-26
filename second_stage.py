@@ -40,6 +40,17 @@ mesh3_data = np.float64([
     [0.5, -0.5, 2]
 ])
 
+mesh4_data = np.float64([
+    [-0.6, -0.6, 1],
+    [-0.6, 0.6, 1],
+    [-0.6, 0.6, 2],
+    [-0.6, -0.6, 2],
+    [0.6, -0.6, 1],
+    [0.6, 0.6, 1],
+    [0.6, 0.6, 2],
+    [0.6, -0.6, 2]
+])
+
 mesh1_cells_dict = {
     'hexahedron': np.array([
         [0, 1, 2, 3, 4, 5, 6, 7]
@@ -58,13 +69,22 @@ mesh3_cells_dict = {
     ])
 }
 
+mesh4_cells_dict = {
+    'hexahedron': np.array([
+        [0, 1, 2, 3, 4, 5, 6, 7]
+    ])
+}
+
 mesh1 = MeshBody(mesh1_data, mesh1_cells_dict)
 mesh1.color = 'black'
 mesh2 = MeshBody(mesh2_data, mesh2_cells_dict, velocity=np.float64([0, -0.25, 0.25]))
 mesh2.color = 'navy'
 mesh3 = MeshBody(mesh3_data, mesh3_cells_dict)
 mesh3.color = 'seagreen'
-glob_mesh = GlobalMesh(mesh1, mesh2, mesh3, bs=0.49)
+mesh4 = MeshBody(mesh4_data, mesh4_cells_dict)
+mesh4.color = 'darkred'
+# glob_mesh = GlobalMesh(mesh1, mesh2, mesh3, bs=0.49)
+glob_mesh = GlobalMesh(mesh1, mesh2, mesh4, bs=0.49)
 
 fig, (ax1, ax2, ax3) = plt.subplots(nrows=1, ncols=3, subplot_kw=dict(projection='3d', proj_type='ortho'))
 ax1.set_title('At $t$')
@@ -89,7 +109,7 @@ print('Contact Pairs at t = 0:')
 for pair in contact_pairs: print(pair)
 print()
 
-print('Total Iterations:', glob_mesh.normal_increments(dt))
+print('Total Iterations:', glob_mesh.normal_increments(dt, multi_stage=True))
 print()
 
 glob_mesh.remove_pairs(dt)
@@ -104,18 +124,20 @@ for mesh in glob_mesh.mesh_bodies:
 
 for node in glob_mesh.nodes: ax2.text(*node.pos, f'{node.label}', color='lime')
 
+# Corner force calculated here. Need to perform detection again.
 glob_mesh.sort()
-glob_mesh.get_contact_pairs(dt, include_initial_penetration=True)
+contact_pairs = glob_mesh.get_contact_pairs(dt)
 print('Contact Pairs at t = dt:')
 for pair in glob_mesh.contact_pairs: print(pair)
 print()
 
-print('Total Iterations:', glob_mesh.normal_increments(dt))
+print('Total Iterations:', glob_mesh.normal_increments(dt, multi_stage=True))
 print()
 
 glob_mesh.remove_pairs(dt)
 glob_mesh.update_nodes(dt)
-# glob_mesh.sort()
+for patch_obj in glob_mesh.surfaces:
+    patch_obj.zero_contact()
 print('Contact Pairs at t = 2*dt:')
 for pair in glob_mesh.contact_pairs: print(pair)
 print()

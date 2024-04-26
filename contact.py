@@ -826,7 +826,7 @@ class Surface:
         :param max_iter: int; The maximum number of iterations for the Newton-Raphson scheme.
         :param _omit: int; The dimension to omit. Only two equations are need, so only two dimensions are needed to
                       solve for the reference point. If the wrong dimensions are chosen, then the solution will result
-                      in a singularity.
+                      in a singularity. This is an argument that should not be changed by the user.
         :return: tuple; (xi, eta) coordinate and k iterations.
         """
         index = np.arange(3)
@@ -1044,7 +1044,7 @@ class GlobalMesh:
 
         self.master_patches = master_patches if master_patches else np.where(self.surface_count == 1)[0]
         self.slave_nodes = slave_nodes
-        self.contact_pairs, self.get_pair_by_node, self.dynamic_pairs = [], {}, {}
+        self.contact_pairs, self.get_pair_by_node = [], {}
 
         self.sort()
 
@@ -1205,7 +1205,8 @@ class GlobalMesh:
                                                     include_initial_penetration=include_initial_penetration,
                                                     tol=tol, max_iter=max_iter)
 
-    def get_contact_pairs(self, dt: float, glue=False, include_initial_penetration=False, tol=1e-12, max_iter=30):
+    def get_contact_pairs(self, dt: float, glue=False, include_initial_penetration=False, only_return_extras=False,
+                          was_removed=None, tol=1e-12, max_iter=30):
         """
         Get the contact pairs for the current time step.
 
@@ -1215,6 +1216,11 @@ class GlobalMesh:
         :param include_initial_penetration: bool; If True, then if the node has already just penetrated the surface
                                             before time 0, then it will be considered. This is an alternative method
                                             to multiple stage detection.
+        :param only_return_extras: bool; If True, then only the pairs to be added to the existing will be returned. The
+                                   additional pairs will not be added to self.contact_pairs.
+        :param was_removed: list or None; A list of tuples (patch_id, node_id) for contact pairs that were previously
+                            removed in a previous force iteration. This is used in the rare case where the detection
+                            will default to this removed pair when it should not.
         :param tol: float; The tolerance for the contact check.
         :param max_iter: int; The maximum number of iterations for the Newton-Raphson scheme.
         :return: list; A list of tuples where each tuple consists of (surface_id, node_id, (xi, eta, del_tc), iters).
@@ -1266,7 +1272,12 @@ class GlobalMesh:
                             contact_pairs.append(pair)
                             get_pair_by_node[node] = (pair[0], *pair[2:])
                     elif del_tc > del_tc_:
-                        pass
+                        if was_removed:
+                            if (patch_, node) in was_removed:
+                                N = patch_obj.get_normal(np.float64([xi, eta]), dt)
+                                contact_pairs.remove((patch_, node, (xi_, eta_, del_tc_), N_, k_))
+                                contact_pairs.append((patch, node, (xi, eta, del_tc), N, k))
+                                get_pair_by_node[node] = (patch, (xi, eta, del_tc), N, k)
                     else:
                         raise RuntimeError('This should not happen.')
                 elif is_hitting and node in master_nodes:
@@ -1301,8 +1312,9 @@ class GlobalMesh:
                         get_pair_by_node[node] = (patch, (xi, eta, del_tc), N, k)
                         slave_nodes.append(node)
 
-        self.contact_pairs.extend(contact_pairs)
-        self.get_pair_by_node.update(get_pair_by_node)
+        if not only_return_extras:
+            self.contact_pairs.extend(contact_pairs)
+            self.get_pair_by_node.update(get_pair_by_node)
 
         return contact_pairs
 
@@ -1519,14 +1531,19 @@ class GlobalMesh:
 
         return patch, node.label, (rel_ref[0], rel_ref[1], None), N, None
 
-    def normal_increments(self, dt: float, tol=1e-12, max_iter=30):
+    def normal_increments(self, dt: float, multi_stage=False, stage_max=5, tol=1e-12, max_iter=30, _stages=None):
         """
         Find the normal force across all patches and nodes in contact until there is no penetration.
 
         :param dt: float; The current time step.
+        :param multi_stage: bool; If True, then the contact detection will be done after force determination to detect
+                            those additional pairs from the force addition. This will run recursively until no
+                            additional pairs are found.
+        :param stage_max: int; The maximum number of multi-stage detection iterations.
         :param tol: float; The tolerance for all solving schemes. This affects a wider range of cases such as what is
                     considered a zero, the edge cases, and the convergence criteria.
         :param max_iter: int; The maximum number of iterations for all solving schemes.
+        :param _stages: list or None; The list of iteration counts if there are multiple stages of detection.
         """
         if not self.contact_pairs:
             self.get_contact_pairs(dt, tol=tol, max_iter=max_iter)
@@ -1558,7 +1575,6 @@ class GlobalMesh:
                     dynamic_pair = self.get_dynamic_pair(ref, patch, node, dt, tol=tol, max_iter=max_iter)
                     if dynamic_pair:
                         new_patch, _, (new_xi, new_eta, _), new_N, _ = dynamic_pair
-                        self.dynamic_pairs[node_id] = (new_patch, (new_xi, new_eta, None), new_N, None)
                         self.contact_pairs[i] = dynamic_pair
                         self.get_pair_by_node[node_id] = (new_patch, (new_xi, new_eta, None), new_N, None)
 
@@ -1568,10 +1584,26 @@ class GlobalMesh:
                     self.get_pair_by_node[node_id] = (surface_id, (xi, eta, del_tc), N, k)
                 fc_list.append(fc)
 
-        # Second stage detection might need to be added here.
+        # Multi-stage detection
+
+        if _stages is None:
+            # noinspection PyUnboundLocalVariable
+            _stages = [iters1]
+        else:
+            # noinspection PyUnboundLocalVariable
+            _stages.append(iters1)
+
+        if multi_stage and len(_stages) <= stage_max and iters1 > 1:
+            removed_pairs = self.remove_pairs(dt, tol=tol)
+            self.sort()
+            extra_pairs = self.get_contact_pairs(dt, tol=tol, max_iter=max_iter, was_removed=removed_pairs)
+
+            if extra_pairs:
+                return self.normal_increments(dt, multi_stage=True, tol=tol, max_iter=max_iter, _stages=_stages,
+                                              stage_max=stage_max)
 
         # noinspection PyUnboundLocalVariable
-        return iters1
+        return _stages
 
     def glue_increments(self, dt: float, tol=1e-12, max_iter=30):
         """
@@ -1619,6 +1651,7 @@ class GlobalMesh:
         :param tol: float; The tolerance for the edge cases and zero condition.
         """
 
+        removed_pairs = []
         for pair in self.contact_pairs[:]:  # looping over a copy
             patch, node, (xi, eta, del_tc), N, k = pair
             node_obj = self.nodes[node]
@@ -1627,9 +1660,11 @@ class GlobalMesh:
             if node_obj.fc == 0:
                 self.contact_pairs.remove(pair)
                 del self.get_pair_by_node[node]
+                removed_pairs.append(pair[:2])
             elif not all(np.logical_and(ref >= -1 - tol, ref <= 1 + tol)):
                 self.contact_pairs.remove(pair)
                 del self.get_pair_by_node[node]
+                removed_pairs.append(pair[:2])
             else:
                 self.contact_pairs.remove(pair)
 
@@ -1637,6 +1672,7 @@ class GlobalMesh:
                 N = patch_obj.get_normal(ref, dt)
                 self.contact_pairs.append((patch, node, (xi, eta, None), N, None))
                 self.get_pair_by_node[node] = (patch, (xi, eta, None), N, None)
+        return removed_pairs
 
     def update_nodes(self, dt: float):
         """

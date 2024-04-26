@@ -420,7 +420,7 @@ class TestContact(unittest.TestCase):
         glob_mesh = GlobalMesh(mesh1, mesh2, bs=0.9)
 
         iters = glob_mesh.normal_increments(dt)
-        self.assertEqual(iters, 16)
+        self.assertEqual(iters[0], 16)
         contact_pairs = [(2, 12), (2, 13), (2, 20), (2, 21), (8, 14), (8, 15), (8, 22), (8, 23)]
         self.assertListEqual([(pair[0], pair[1]) for pair in glob_mesh.contact_pairs], contact_pairs)
 
@@ -541,7 +541,7 @@ class TestContact(unittest.TestCase):
         mesh3 = MeshBody(mesh3_points, mesh3_cells_dict, velocity=np.float64([0, 0, 0.75]))
         mesh4 = MeshBody(mesh4_points, mesh4_cells_dict, velocity=np.float64([0, -0.499, -0.25]), mass=10)
         glob_mesh = GlobalMesh(mesh1, mesh2, mesh3, mesh4, bs=0.9)
-        self.assertEqual(glob_mesh.normal_increments(dt), 26)
+        self.assertEqual(glob_mesh.normal_increments(dt)[0], 26)
 
         all_patch_nodes = set()
         for patch_id, patch_stuff in groupby(glob_mesh.contact_pairs, lambda x: x[0]):
