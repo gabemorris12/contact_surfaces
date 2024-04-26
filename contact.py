@@ -125,6 +125,7 @@ class Node:
         self.corner_force = corner_force
         self.contact_force = np.zeros((3,), dtype=np.float64)  # Force due to contact
         self.fc = 0  # placeholder for force increments
+        self.ignore_tensile = True  # If True, then tensile effects will be ignored in the normal force constraint
 
     def get_acc(self):
         """
@@ -493,7 +494,7 @@ class Surface:
 
             phi_k_arr = phi_p_2D(xi, eta, self.xi_p, self.eta_p)
 
-            if node.fc + fc < 0:  # Force increment has become tensile
+            if node.fc + fc < 0 and node.ignore_tensile:  # Force increment has become tensile
                 node.contact_force += -N*node.fc
 
                 for patch_node, phi_k in zip(self.nodes, phi_k_arr):
@@ -756,12 +757,15 @@ class Surface:
             axes.plot_trisurf(triangle, z_values, color=color, alpha=alpha, linewidth=0)
         axes.scatter(xp, yp, zp, color=color, alpha=1)
 
-    def get_normal(self, ref: np.ndarray, del_t: float):
+    # noinspection PyUnusedLocal
+    def get_normal(self, ref: np.ndarray, del_t: float, node=None):
         """
         Get the unit normal vector of the surface at the given reference point and time.
 
         :param ref: np.array; (xi, eta) coordinates.
         :param del_t: float; The instant in time to determine the normal.
+        :param node: Node; If the node object is provided, then a check for the normal direction will be done. If the
+                     node is on the inside of the surface, then the normal will be flipped.
         :return: np.array; The unit normal at the given reference point.
         """
         # The normal is defined as the cross product between dr/dxi and dr/deta where r is the position vector.
@@ -775,6 +779,15 @@ class Surface:
 
         # noinspection PyUnreachableCode
         cross = np.cross(dr_dxi, dr_deta)
+        if node:
+            A0 = self.construct_position_basis(del_t=0)
+            contact_point = ref_to_physical(ref, A0, self.xi_p, self.eta_p)
+            r0 = node.pos - contact_point
+            s = np.sign(np.dot(r0, cross)) if np.linalg.norm(r0) > 1e-12 else 1
+
+            if s == -1:
+                node.ignore_tensile = False
+
         return cross/np.linalg.norm(cross)
 
     def get_fc_guess(self, node: Node, N: np.ndarray, del_t: float, phi_k_arr: np.ndarray):
@@ -1246,25 +1259,26 @@ class GlobalMesh:
                                                                                         include_initial_penetration=include_initial_penetration,
                                                                                         tol=tol,
                                                                                         max_iter=max_iter)
+                node_obj = self.nodes[node]
                 if is_hitting and node not in master_nodes and node not in slave_nodes:
                     slave_nodes.append(node)
                     master_nodes.extend([node.label for node in patch_obj.nodes])
                     ref = np.float64([xi, eta])
                     # The normal direction is based off the patch position at time dt. In the future, it might be better
                     # to get this based off the minimum distance.
-                    N = patch_obj.get_normal(ref, dt)
+                    N = patch_obj.get_normal(ref, dt, node=node_obj)
                     contact_pairs.append((patch, node, (xi, eta, del_tc), N, k))
                     get_pair_by_node[node] = (patch, (xi, eta, del_tc), N, k)
                 elif is_hitting and node in slave_nodes:
                     patch_, (xi_, eta_, del_tc_), N_, k_ = get_pair_by_node[node]  # original
 
                     if del_tc + tol < del_tc_:  # This means that it will intersect with the current before the original
-                        N = patch_obj.get_normal(np.float64([xi, eta]), dt)
+                        N = patch_obj.get_normal(np.float64([xi, eta]), dt, node=node_obj)
                         contact_pairs.remove((patch_, node, (xi_, eta_, del_tc_), N_, k_))
                         contact_pairs.append((patch, node, (xi, eta, del_tc), N, k))
                         get_pair_by_node[node] = (patch, (xi, eta, del_tc), N, k)
                     elif del_tc_ - tol <= del_tc <= del_tc_ + tol:  # This means we are at an edge.
-                        N = patch_obj.get_normal(np.float64([xi, eta]), dt)
+                        N = patch_obj.get_normal(np.float64([xi, eta]), dt, node=node_obj)
                         pair = self.get_edge_pair((patch, node, (xi, eta, del_tc), N, k),
                                                   (patch_, node, (xi_, eta_, del_tc_), N_, k_), dt, tol=tol)
                         if pair[0] != patch_:
@@ -1274,7 +1288,7 @@ class GlobalMesh:
                     elif del_tc > del_tc_:
                         if was_removed:
                             if (patch_, node) in was_removed:
-                                N = patch_obj.get_normal(np.float64([xi, eta]), dt)
+                                N = patch_obj.get_normal(np.float64([xi, eta]), dt, node=node_obj)
                                 contact_pairs.remove((patch_, node, (xi_, eta_, del_tc_), N_, k_))
                                 contact_pairs.append((patch, node, (xi, eta, del_tc), N, k))
                                 get_pair_by_node[node] = (patch, (xi, eta, del_tc), N, k)
@@ -1307,7 +1321,7 @@ class GlobalMesh:
                         add_current_pair = True
 
                     if add_current_pair:
-                        N = patch_obj.get_normal(np.float64([xi, eta]), dt)
+                        N = patch_obj.get_normal(np.float64([xi, eta]), dt, node=node_obj)
                         contact_pairs.append((patch, node, (xi, eta, del_tc), N, k))
                         get_pair_by_node[node] = (patch, (xi, eta, del_tc), N, k)
                         slave_nodes.append(node)
