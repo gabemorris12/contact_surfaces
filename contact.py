@@ -540,7 +540,7 @@ class Surface:
         return sols
 
     def contact_check_through_reference(self, node: Node, dt: float, include_initial_penetration=False, tol=1e-12,
-                                        max_iter=30):
+                                        edge_tol=1e-3, max_iter=30):
         """
         This procedure finds the reference point and the delta_tc all at once using a Newton-Raphson scheme. If all the
         reference points are between -1 and 1, the delta_tc is between 0 and dt, and it took less than 25 iterations to
@@ -554,6 +554,8 @@ class Surface:
         :param tol: float; The tolerance of the edge cases. For the end cases where either reference coordinate is
                     either 1 or -1, the tolerance will adjust for floating point error, ensuring that the edge case is
                     met.
+        :param edge_tol: float; The edge tolerance. If the node is not within -1 - edge_tol and 1 + edge_tol, then the
+                         node is not considered to be within the bounds of the patch
         :param max_iter: int; The maximum number of iterations for the Newton-Raphson scheme.
         :return: tuple; Returns True or False indicating that the node will pass through the surface within the next
                  time step. Additionally, it returns the time until contact del_tc (if it's between 0 and dt), the
@@ -585,7 +587,7 @@ class Surface:
         k = sol[1]
 
         a = -dt - tol if include_initial_penetration else 0 - tol
-        if all(np.logical_and(ref >= -1 - tol, ref <= 1 + tol)) and a <= del_tc <= dt + tol and k <= max_iter - 2:
+        if all(np.logical_and(ref >= -1 - edge_tol, ref <= 1 + edge_tol)) and a <= del_tc <= dt + tol and k <= max_iter - 2:
             del_tc = 0 if 0 - tol <= del_tc <= 0 + tol else del_tc
             del_tc = dt if dt - tol <= del_tc <= dt + tol else del_tc
             return True, del_tc, ref, k
@@ -1192,7 +1194,7 @@ class GlobalMesh:
 
     def contact_check_through_reference(self, surface_id: int, node_id: int, dt: float,
                                         include_initial_penetration=False,
-                                        tol=1e-12, max_iter=30):
+                                        edge_tol=1e-3, tol=1e-12, max_iter=30):
         """
         This procedure finds the reference point and the delta_tc all at once using a Newton-Raphson scheme. If all the
         reference points are between -1 and 1 and the delta_tc is between 0 and dt, then the node will pass through the
@@ -1207,6 +1209,8 @@ class GlobalMesh:
         :param tol: float; The tolerance of the edge cases. For the end cases where either reference coordinate is
                     either 1 or -1, the tolerance will adjust for floating point error, ensuring that the edge case is
                     met.
+        :param edge_tol: float; The edge tolerance. If the node is not within -1 - edge_tol and 1 + edge_tol, then the
+                         node is not considered to be within the bounds of the patch
         :param max_iter: int; The maximum number of iterations for the Newton-Raphson scheme.
         :return: tuple; Returns True or False indicating that the node will pass through the surface within the next
                  time step. Additionally, it returns the time until contact del_tc (if it's between 0 and dt), the
@@ -1216,10 +1220,10 @@ class GlobalMesh:
         # noinspection PyUnresolvedReferences
         return surf.contact_check_through_reference(self.nodes[node_id], dt,
                                                     include_initial_penetration=include_initial_penetration,
-                                                    tol=tol, max_iter=max_iter)
+                                                    edge_tol=edge_tol, tol=tol, max_iter=max_iter)
 
     def get_contact_pairs(self, dt: float, glue=False, include_initial_penetration=False, only_return_extras=False,
-                          was_removed=None, tol=1e-12, max_iter=30):
+                          was_removed=None, tol=1e-12, edge_tol=1e-3, max_iter=30):
         """
         Get the contact pairs for the current time step.
 
@@ -1235,6 +1239,8 @@ class GlobalMesh:
                             removed in a previous force iteration. This is used in the rare case where the detection
                             will default to this removed pair when it should not.
         :param tol: float; The tolerance for the contact check.
+        :param edge_tol: float; The edge tolerance. If the node is not within -1 - edge_tol and 1 + edge_tol, then the
+                         node is not considered to be within the bounds of the patch
         :param max_iter: int; The maximum number of iterations for the Newton-Raphson scheme.
         :return: list; A list of tuples where each tuple consists of (surface_id, node_id, (xi, eta, del_tc), iters).
         """
@@ -1257,7 +1263,7 @@ class GlobalMesh:
 
                 is_hitting, del_tc, (xi, eta), k = self.contact_check_through_reference(patch, node, dt,
                                                                                         include_initial_penetration=include_initial_penetration,
-                                                                                        tol=tol,
+                                                                                        tol=tol, edge_tol=edge_tol,
                                                                                         max_iter=max_iter)
                 node_obj = self.nodes[node]
                 if is_hitting and node not in master_nodes and node not in slave_nodes:
@@ -1545,7 +1551,8 @@ class GlobalMesh:
 
         return patch, node.label, (rel_ref[0], rel_ref[1], None), N, None
 
-    def normal_increments(self, dt: float, multi_stage=False, stage_max=5, tol=1e-12, max_iter=30, _stages=None):
+    def normal_increments(self, dt: float, multi_stage=False, stage_max=5, tol=1e-12, edge_tol=1e-3, max_iter=30,
+                          _stages=None):
         """
         Find the normal force across all patches and nodes in contact until there is no penetration.
 
@@ -1556,6 +1563,8 @@ class GlobalMesh:
         :param stage_max: int; The maximum number of multi-stage detection iterations.
         :param tol: float; The tolerance for all solving schemes. This affects a wider range of cases such as what is
                     considered a zero, the edge cases, and the convergence criteria.
+        :param edge_tol: float; The edge tolerance. If the node is not within -1 - edge_tol and 1 + edge_tol, then the
+                         node is not considered to be within the bounds of the patch
         :param max_iter: int; The maximum number of iterations for all solving schemes.
         :param _stages: list or None; The list of iteration counts if there are multiple stages of detection.
         """
@@ -1565,7 +1574,7 @@ class GlobalMesh:
         fc_list = []
         for iters1 in range(max_iter):
 
-            if np.linalg.norm(fc_list) <= tol and fc_list:
+            if (np.linalg.norm(fc_list) <= tol and fc_list) or not self.contact_pairs:
                 break
 
             fc_list.clear()
@@ -1585,7 +1594,7 @@ class GlobalMesh:
 
                 ref = np.array([xi, eta])
                 # if not all(np.logical_and(ref >= -1 - tol, ref <= 1 + tol)) and fc:
-                if not all(np.logical_and(ref >= -1 - tol, ref <= 1 + tol)):
+                if not all(np.logical_and(ref >= -1 - edge_tol, ref <= 1 + edge_tol)):
                     dynamic_pair = self.get_dynamic_pair(ref, patch, node, dt, tol=tol, max_iter=max_iter)
                     if dynamic_pair:
                         new_patch, _, (new_xi, new_eta, _), new_N, _ = dynamic_pair
@@ -1610,7 +1619,8 @@ class GlobalMesh:
         if multi_stage and len(_stages) <= stage_max and iters1 > 1:
             removed_pairs = self.remove_pairs(dt, tol=tol)
             self.sort()
-            extra_pairs = self.get_contact_pairs(dt, tol=tol, max_iter=max_iter, was_removed=removed_pairs)
+            extra_pairs = self.get_contact_pairs(dt, tol=tol, edge_tol=edge_tol, max_iter=max_iter,
+                                                 was_removed=removed_pairs)
 
             if extra_pairs:
                 return self.normal_increments(dt, multi_stage=True, tol=tol, max_iter=max_iter, _stages=_stages,

@@ -5,8 +5,8 @@ import numpy as np
 from contact import MeshBody, GlobalMesh
 import matplotlib.pyplot as plt
 
-dt = 0.1
-frames = 35
+dt = 0.05
+frames = 70
 
 mesh1_data = np.float64([
     [-0.5, -0.5, 0],
@@ -88,9 +88,7 @@ mesh4.color = 'darkred'
 glob_mesh = GlobalMesh(mesh1, mesh2, mesh4, bs=0.49)
 
 fig, ax = plt.subplots(subplot_kw=dict(projection='3d', proj_type='ortho'))
-ax.set_xlabel('x')
-ax.set_ylabel('y')
-ax.set_zlabel('z')
+fig.set_size_inches(8, 6)
 
 for i in range(frames):
     t = i*dt
@@ -102,12 +100,12 @@ for i in range(frames):
 
     ax.set_aspect('equal')
     ax.view_init(elev=25, azim=25)
-    fig.savefig(f'scratch/{i}.png')
+    fig.savefig(f'scratch/{i}.png', dpi=200)
     ax.cla()
 
     glob_mesh.sort()
-    contact_pairs = glob_mesh.get_contact_pairs(dt)
-    print(f'Total Iterations at t = {t:.5f}:', glob_mesh.normal_increments(dt, multi_stage=True))
+    contact_pairs = glob_mesh.get_contact_pairs(dt, edge_tol=1e-2)
+    print(f'Total Iterations at t = {t:.5f}:', glob_mesh.normal_increments(dt, multi_stage=True, edge_tol=1e-2))
     print()
 
     glob_mesh.remove_pairs(dt)
