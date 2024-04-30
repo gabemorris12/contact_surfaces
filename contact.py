@@ -1303,6 +1303,8 @@ class GlobalMesh:
                 elif is_hitting and node in master_nodes:
                     add_current_pair = False
                     hitting_after = []
+                    ref = np.float64([xi, eta])
+
                     # Remove contact that will occur after the current contact.
                     for patch_node in patch_obj.nodes:
                         pair = get_pair_by_node.get(patch_node.label)
@@ -1315,10 +1317,14 @@ class GlobalMesh:
                                     contact_pairs.remove((patch_, patch_node.label, (xi_, eta_, del_tc_), N_, k_))
                                     slave_nodes.remove(patch_node.label)
                                     del get_pair_by_node[patch_node.label]
+                            elif del_tc_ - tol <= del_tc <= del_tc_ + tol:  # At the same time
+                                if all(np.logical_and(ref > -1 + tol, ref < 1 - tol)):
+                                    hitting_after.append(True)
+                                else:
+                                    hitting_after.append(False)
                             else:
                                 hitting_after.append(False)
 
-                    ref = np.float64([xi, eta])
                     if not hitting_after:
                         add_current_pair = True
                     elif all(hitting_after):
