@@ -2,7 +2,7 @@ from contact import MeshBody, GlobalMesh
 import matplotlib.pyplot as plt
 import numpy as np
 
-dt = 1
+dt = 0.1
 
 mesh1_data = np.float64([
     [1, -1, 0],
@@ -53,9 +53,22 @@ mesh2_cells_dict = {
 
 mesh1 = MeshBody(mesh1_data, mesh1_cells_dict)
 mesh1.color = 'black'
-mesh2 = MeshBody(mesh2_data, mesh2_cells_dict, velocity=np.float64([0, 0, -0.25]))
+mesh2 = MeshBody(mesh2_data, mesh2_cells_dict, velocity=np.float64([0, 0, -0.5]))
 mesh2.color = 'navy'
 glob_mesh = GlobalMesh(mesh1, mesh2, bs=0.499)
+glob_mesh.nodes[3].mass = 0.125
+glob_mesh.nodes[5].mass = 0.125
+glob_mesh.nodes[15].mass = 0.125
+glob_mesh.nodes[17].mass = 0.125
+glob_mesh.nodes[4].mass = 0.25
+glob_mesh.nodes[9].mass = 0.25
+glob_mesh.nodes[11].mass = 0.25
+glob_mesh.nodes[16].mass = 0.25
+glob_mesh.nodes[18].mass = 0.015625
+glob_mesh.nodes[19].mass = 0.015625
+glob_mesh.nodes[22].mass = 0.015625
+glob_mesh.nodes[23].mass = 0.015625
+glob_mesh.nodes[10].mass = 0.5
 
 contact_pairs = glob_mesh.get_contact_pairs(dt)
 print('Contact Pairs Before:')
@@ -66,6 +79,7 @@ print()
 print('Total Iterations', glob_mesh.normal_increments(dt))
 print()
 
+glob_mesh.remove_pairs(dt)
 print('Contact Pairs After:')
 for pair in glob_mesh.contact_pairs: print(pair, '---> Node Force:', glob_mesh.nodes[pair[1]].contact_force)
 print()
